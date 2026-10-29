@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L4 · 模块应该是深的 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 4 章 · 课程 4 / 21</p>
+
+<h1>模块应该是深的</h1>
+<p class="standfirst">全书最有名的一张图：宽度是接口复杂度，高度是功能。好<a class="gl" href="../reference/glossary.html#module">模块</a><span class="en-inl">module</span>又窄又高：用起来简单，里面装着很多事。</p>
+
+<h2><span class="num">4.1</span>模块、接口、实现</h2>
+
+<p>「模块」在本书里是一个广义词：类、子系统、服务，甚至一个函数或方法，都算。所以这一章说的东西，对 <code>.h</code> 头文件成立，对一个 <code>static</code> 函数也成立。</p>
+
+<p>每个模块由两部分构成：</p>
+
+<ul>
+  <li><strong>接口</strong>：使用它的开发者<em>必须</em>知道的一切。核心是「做什么」，而不是「怎么做」。</li>
+  <li><strong>实现</strong>：干活的代码。使用它的人不需要知道。</li>
+</ul>
+
+<p>作者强调，接口又含两部分，这点常被忽略：</p>
+
+<table>
+  <thead><tr><th>部分</th><th>内容</th><th>谁能检查</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>正式部分<br><span class="term">formal</span></td>
+      <td>签名、类型、异常</td>
+      <td>编译器、类型系统、<code>-Werror</code></td>
+    </tr>
+    <tr>
+      <td>非正式部分<br><span class="term">informal</span></td>
+      <td>行为、约束、调用顺序、单位、所有权、并发要求</td>
+      <td><strong>只有注释和文档</strong>——通常比正式部分更大、更复杂</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="excerpt">
+<span class="src">第 4 章 · 接口的两个部分</span>
+<p>接口包含正式部分和非正式部分。正式部分由代码元素构成，编译器能据此检查出某些错误，例如参数的类型、个数等。非正式部分包含接口的其它所有内容，例如某个方法在参数为 null 时会发生什么、是否必须先调用另一个方法、参数的单位是什么、某个参数为 null 表示什么。非正式部分只能用注释来描述，而它通常比正式部分更大、更复杂。对于大多数接口，非正式部分要承担大部分复杂性。</p>
+</div>
+
+<p>落到 C 上，这件事格外刺眼。下面的签名在编译器眼里完全合法：</p>
+
+<pre><code>/* 正式部分：编译器看不出任何问题 */
+int dev_ioctl(int fd, unsigned long req, void *arg, size_t len);</code></pre>
+
+<p>但 <code>req</code> 该传哪些值、<code>arg</code> 对每个 <code>req</code> 分别要指向什么结构、<code>len</code> 是输入还是输出还是两者、返回 0 是否一定意味着 <code>arg</code> 被写过，全是非正式部分，全靠注释。<code>ioctl</code> 之所以被骂了几十年，不是因为它宽，而是因为它的非正式接口大到没人能完整记住。这是「<a class="gl" href="../reference/glossary.html#unknown-unknowns">未知的未知</a><span class="en-inl">unknown unknowns</span>」的最大温床：调用方不知道有约束，编译器也没法提醒他。</p>
+
+<div class="key">
+<p>把非正式部分写清楚，是消除「<strong>未知的未知</strong>」最直接的手段。编译器帮不了的部分，只能靠你写下来，而写下来的那几行，才是模块接口里值钱的部分。</p>
+</div>
+
+<p>还有一层容易漏掉的推论：<strong>如果非正式部分太大，光靠写注释是救不回来的。</strong>一份三百行的文档，没人读完才开始写代码。这时正确的做法不是把文档写得更长，而是改接口：把约束变成类型。C++ 的 <code>std::span</code>、<code>std::string_view</code>、Rust 的 <code>&amp;mut</code> 和所有权检查，都是在做这件事：把原本只能写在注释里的东西，搬进编译器能管的地方。这是本章对 C/C++/Rust 读者最实用的一条：<em>能搬到正式部分的，就不要留在非正式部分。</em></p>
+
+<h2><span class="num">4.2</span>抽象：两种失败方式</h2>
+
+<p>抽象 = 省略不重要细节的简化视图。它有两种坏法，方向相反：</p>
+
+<div class="grid2">
+  <div class="card">
+    <h4>包含了不重要的细节</h4>
+    <p>使用者被要求关心与他无关的东西 → <strong><a class="gl" href="../reference/glossary.html#cognitive-load">认知负荷</a><span class="en-inl">cognitive load</span></strong>上升。典型症状：一个 <code>struct</code> 里五个字段，调用方只想传一个，却被迫理解全部。</p>
+  </div>
+  <div class="card">
+    <h4>忽略了重要的细节</h4>
+    <p>使用者拿不到做决定所需的信息 → 变成<strong>错误的抽象</strong>，产生<a class="gl" href="../reference/glossary.html#obscurity">晦涩</a><span class="en-inl">obscurity</span>。典型症状：接口说「已保存」，但没说是否已落盘。</p>
+  </div>
+</div>
+
+<p>判断标准不是「隐藏得越多越好」，而是<strong>该藏的藏、该露的露</strong>。书里的文件系统例子很精确：块分配完全可以隐藏，你确实不关心 <code>inode</code> 分配在哪个扇区；但「数据什么时候落盘」必须暴露，因为数据库要做 WAL、要控制 fsync 的时机，它<em>必须</em>知道这个信息。</p>
+
+<p>这个例子的意思是：<strong>该不该隐藏，取决于调用方是否需要据此做决策</strong>，而不是取决于这个词听起来是不是「内部细节」。落盘时机听起来很像内部细节，但对数据库来说是关键契约。同一条信息，对一个调用方是噪音，对另一个就是全部。</p>
+
+<h2><span class="num">4.3</span><a class="gl" href="../reference/glossary.html#depth">深度</a><span class="en-inl">depth</span>：成本与收益之比</h2>
+
+<div class="rects">
+  <figure class="r-shallow">
+    <div class="box"></div>
+    <figcaption><span class="cap-t">浅</span>接口复杂度 ≈ 实现提供的功能</figcaption>
+  </figure>
+  <figure class="r-ideal">
+    <div class="box"></div>
+    <figcaption><span class="cap-t">理想（不可达）</span>没有接口，却提供全部功能</figcaption>
+  </figure>
+  <figure class="r-deep">
+    <div class="box"></div>
+    <figcaption><span class="cap-t">深 ✓</span>接口简单，后面藏着大量功能</figcaption>
+  </figure>
+</div>
+
+<p>矩形面积 = 模块提供的功能，顶边 = 接口的复杂度。注意：<strong>面积大不等于深度高</strong>。功能多但接口同样臃肿的模块，是「大而浅」：它并不比小而浅的更好，只是更贵。</p>
+
+<div class="excerpt">
+<span class="src">第 4 章 · 深度怎么定义</span>
+<p>模块深度是考虑成本与收益的一种方式。模块提供的好处是其功能，模块的成本（就系统复杂性而言）是其接口。模块的接口代表了模块强加给系统其余部分的复杂性：接口越小越简单，引入的复杂性就越小。最好的模块是那些收益最大、成本最低的模块。接口是好的，但更多或更大的接口不一定更好。</p>
+</div>
+
+<div class="card">
+<h4>深的标准案例：Unix I/O</h4>
+<p>五个调用：</p>
+<pre><code>int    open(const char *path, int flags, mode_t mode);
+ssize_t read(int fd, void *buf, size_t count);
+ssize_t write(int fd, const void *buf, size_t count);
+off_t  lseek(int fd, off_t offset, int whence);
+int    close(int fd);</code></pre>
+<p>这五个签名加起来的宽度，比你见过的任何文件 API 都窄。背后却是上千行实现：磁盘上的表示、目录与路径、权限检查、中断与后台写回、多文件调度、页缓存、多种设备的统一。</p>
+<p>更重要的是时间维度：这套接口几十年基本没变，而实现被彻底重写过多次（从单机文件系统到虚拟文件系统层到各种文件系统驱动）。<strong>接口稳定，实现可以换</strong>，这就是深模块的红利，也是你能在上面写 <code>open/read/write</code> 而不是直接操作块设备的原因。</p>
+</div>
+
+<div class="card">
+<h4>深到极致的案例：垃圾回收</h4>
+<p>书里有个很妙的说法：GC 是一个<strong>没有接口的深模块</strong>。内存的分配与回收被整个拿掉了：你不再有 <code>free</code>，不再需要知道堆的结构、也不需要考虑释放时机。复杂度凭空消失，因为衡量深度的分母变成了零。</p>
+<p>这不是说 GC 一定更好（对延迟敏感的底层代码往往不能接受）。它是说：<strong>深度的上限，是可以把整件事做得不需要存在。</strong></p>
+</div>
+
+<div class="card">
+<h4>浅的标准案例</h4>
+<p>一个自己写的 <code>List</code>：<code>push_back</code> / <code>pop_back</code> / <code>at</code> / <code>size</code> / <code>reserve</code> / <code>capacity</code> / <code>iterator</code>……接口几乎把实现的每一步都摊开了。使用者还得知道：迭代器在插入后是否失效？<code>at</code> 和 <code>operator[]</code> 差在哪？这是「接口复杂度 ≈ 实现复杂度」。</p>
+<p>更极端的是<strong><a class="gl" href="../reference/glossary.html#shallow-method">浅方法</a><span class="en-inl">shallow method</span></strong>：</p>
+<pre><code>void set_rate(int r) { rate_ = r; }   /* 一行赋值，六行注释 */</code></pre>
+<p>它没有提供任何抽象，文档却要比代码长，净亏损。<code>rate_</code> 的单位是 Hz 还是 kHz？允许范围？改了之后要重新初始化硬件吗？这些信息，接口一个字都没表达，全靠注释兜着。</p>
+</div>
+
+<h2><span class="num">4.4</span><a class="gl" href="../reference/glossary.html#classitis">类炎</a><span class="en-inl">classitis</span>与它的底层版本</h2>
+
+<p>「类应该小」这条流行建议推到极端，就成了病：把系统拆成大量极小的类，每个只做一点事，结果<strong>使用者要拼装很多东西才能完成一件小事</strong>。作者给它起了名字：<em>classitis</em>。</p>
+
+<p>书中的例子来自 Java 类库，读一个序列化对象要这样（原书用 Java 举例，形状在 C++ 里一模一样）：</p>
+
+<pre><code>/* 为了读一个对象，得叠三层 */
+auto file   = std::make_unique&lt;std::ifstream&gt;(path, std::ios::binary);
+auto buf    = std::make_unique&lt;BufferedSource&gt;(*file);   // 忘了这层就慢十倍
+auto obj    = std::make_unique&lt;ObjectReader&gt;(*buf);</code></pre>
+
+<p>三层。而且<strong>缓冲必须显式请求</strong>，忘了加中间那层，性能就悄悄差一大截，而且不会报错。这是一个典型的「把常见情况做复杂」的设计：最常见的那件事（顺序读完一个文件）反而是最长的写法。</p>
+
+<p>Unix 的对照：默认就是顺序访问，常见情况不用想；需要随机访问才用 <code>lseek</code>。区别不在功能多少，在于<strong>常用路径的复杂度</strong>。</p>
+
+<div class="excerpt">
+<span class="src">第 4 章 · 有效复杂度</span>
+<p>如果一个接口具有许多功能，但大多数开发人员只需要了解其中的一些功能，那么这个接口的有效复杂性就是常用功能的复杂性。提供选择是好的，但应该设计接口使常见情况尽可能简单：几乎每个文件 I/O 用户都希望缓冲，因此默认就应该提供缓冲，而为不需要缓冲的少数情况另外提供一种禁用它的机制。</p>
+</div>
+
+<div class="key">
+<p><strong>衡量深度的正确口径：</strong>不是模块总共暴露了多少能力，而是<em>完成最常见那件事需要知道多少</em>。这就是「<a class="gl" href="../reference/glossary.html#effective-complexity">有效复杂度</a><span class="en-inl">effective complexity</span>」。</p>
+</div>
+
+<p>由此推出本章最后一条设计原则，也是你在评审里最该念的一句：</p>
+
+<div class="card">
+<h4>设计接口时，让常见情况尽可能简单</h4>
+<p>不是「让接口里的东西尽量少」（那会走向忽略重要细节），而是<strong>把最常走的那条路铺平，把罕见路径挪到别的地方去</strong>。罕见路径存在是合理的，它只是不该出现在第一次使用者的视野里。</p>
+<p>书里给的判据很干脆：如果某个特性几乎每次都有人需要，就把它做成默认，别让人显式打开。如果你发现「忘了开某个开关就是错的」，那说明这个开关根本不该存在。</p>
+</div>
+
+<h2><span class="num">4.5</span>为什么这一章专治「评审说不出所以然」</h2>
+
+<p>「这个类太浅了」在过去是一种感觉，说不清楚。这一章给了两把可以量出来的尺子，评审时可以直接用：</p>
+
+<table>
+  <thead><tr><th>你在评审里看到</th><th>说这句话</th><th>为什么站得住</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>一个方法只是转发/赋值</td>
+      <td>「这是浅方法，删掉，让调用方直接用字段。」</td>
+      <td>分母≈1，收益≈0；文档成本却要人读</td>
+    </tr>
+    <tr>
+      <td>新加的第 12 个配置项</td>
+      <td>「这是把决策推给调用方。能不能给个合理默认？」</td>
+      <td>有效复杂度：最常见路径变复杂了</td>
+    </tr>
+    <tr>
+      <td>调用方要按特定顺序调三个函数</td>
+      <td>「顺序约束是非正式接口，能不能合并成一个？」</td>
+      <td>非正式部分比正式部分更难维护</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>这三句话的共同结构是：<strong>指出成本在哪、指出收益在哪、给出一个更小的改法</strong>。有了这个结构，「我觉得不太好」就变成了「这里成本是 X，收益是 Y，建议 Z」，评审不再<a class="gl" href="../reference/glossary.html#dependency">依赖</a><span class="en-inl">dependency</span>资历，依赖论证。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>/* ring_buffer.h —— 一个「薄」得透明的模块 */
+struct ring_buffer {
+    uint8_t *data;
+    size_t   cap;       /* 容量，必须是 2 的幂 */
+    size_t   head;      /* 读位置，永不回绕到 cap 以上 */
+    size_t   tail;      /* 写位置，同上 */
+    size_t   dropped;   /* 溢出丢弃计数 */
+    int      locked;    /* 1 = 生产者正在写 */
+};
+
+int  rb_init(struct ring_buffer *rb, size_t cap);
+int  rb_push(struct ring_buffer *rb, const uint8_t *p, size_t n);
+size_t rb_peek(const struct ring_buffer *rb, uint8_t *out, size_t n);
+void rb_advance(struct ring_buffer *rb, size_t n);
+size_t rb_space(const struct ring_buffer *rb);</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>接口把实现的数据结构原样抄了出来：<code>head</code>/<code>tail</code>/<code>cap</code> 五个字段全部公开，使用者必须理解「为什么 cap 要是 2 的幂」「什么时候该 peek 什么时候该 advance」「locked 由谁置位」。</p>
+<p>于是常见路径变成四步：<code>space</code> 够不够 → <code>push</code> → <code>peek</code> → <code>advance</code>。而常见的用法只有一件事：往里推 <code>n</code> 字节。更深的问题是非正式接口：调用方必须知道 <code>peek</code> 之后不 <code>advance</code> 就会重复读，而这条约束编译器管不了。任何一个人漏调 <code>advance</code>，就是一个只在压力下复现的重复消费 bug。</p>
+<p>这就是「把最常见的事做复杂」，顺带还泄漏了 pad 和 2 的幂这两个设计决策（第 5 章的<a class="gl" href="../reference/glossary.html#information-leakage">信息泄漏</a><span class="en-inl">information leakage</span>）。</p>
+</div>
+</div>
+<p>改法：把结构体挪进 <code>.c</code>，头文件只留不透明句柄和三个函数：<code>rb_create(cap)</code>、<code>rb_write(rb, p, n) -&gt; size_t</code>（推不进去多少就返回多少）、<code>rb_read(rb, out, n) -&gt; size_t</code>。常见路径从四步变成一步，<code>advance</code> 的时序陷阱彻底消失（它变成了内部实现）。代价是失去「零拷贝 peek」：如果那确实是性能<a class="gl" href="../reference/glossary.html#critical-path">关键路径</a><span class="en-inl">critical path</span>，就再单独暴露一个 <code>rb_borrow/rb_commit</code> 对，并把它写进注释说明「必须成对调用」。<strong>先让常见情况简单，再把罕见路径加回来</strong>，顺序不能反。</p>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>量一量深度</h2>
+
+<p>四个模块。判断它们是深、浅，还是「大而浅」，注意第三个陷阱。</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>一个 <code>cache.get(key)</code>，内部处理了过期、LRU 淘汰、并发加锁、回源加载。使用者只需知道 key 和返回值。</p>
+    <div class="opts">
+      <button data-ok="1">深</button>
+      <button>浅</button>
+      <button>大而浅</button>
+    </div>
+    <p class="note">接口一个方法，背后四件事，矩形又窄又高。典型的深度红利：缓存策略以后可以换，调用方一行都不用改。</p>
+  </div>
+
+  <div class="row">
+    <p>一个工具头文件，有 <code>strToInt</code>、<code>intToStr</code>、<code>trimSpace</code>、<code>isDigits</code>、<code>splitComma</code> 五个静态方法，每个三五行。</p>
+    <div class="opts">
+      <button>深</button>
+      <button data-ok="1">浅</button>
+      <button>大而浅</button>
+    </div>
+    <p class="note">接口把实现原样摊开，没有隐藏任何决策。而且它的五个方法大多在标准库里已有对应，这本书会问的更狠的问题是：<strong>它需要存在吗</strong>。</p>
+  </div>
+
+  <div class="row">
+    <p>一个 HTTP 客户端，暴露 40 个配置方法：超时、重试、代理、TLS、连接池、编解码、日志钩子……每个都合理，每个都得设。</p>
+    <div class="opts">
+      <button>深</button>
+      <button>浅</button>
+      <button data-ok="1">大而浅</button>
+    </div>
+    <p class="note">功能很多（面积大），但接口也同样臃肿（顶边宽），所以深度并没有增加。隐性成本：40 个选项意味着 40 个你<strong>必须做决定</strong>的地方，不做决定就用默认值，而默认值可能不适合你。</p>
+  </div>
+
+  <div class="row">
+    <p>一个 <code>set_rate(int)</code>，只有一行 <code>rate_ = r</code>，配了六行注释解释单位和范围。</p>
+    <div class="opts">
+      <button>深</button>
+      <button data-ok="1">浅</button>
+      <button>大而浅</button>
+    </div>
+    <p class="note">书中点名的「浅方法」：不做抽象、只做转发。当文档比代码长时，通常意味着这个方法不该存在：要么让调用方直接设字段，要么给它一个能同时处理单位换算和硬件重初始化的接口。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>一句话复述</h2>
+
+<div class="recall">
+<p>不看上面，用自己的话说明「模块深」是什么意思，以及为什么深模块更好。写下来再看对照。</p>
+<textarea placeholder="深度是……因为……"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p><strong>深 = 接口简单，实现里藏着大量功能。</strong>图形上是窄而高的矩形，数值上是「功能 ÷ 接口复杂度」。</p>
+<p>为何更好：使用者面对的是接口（成本），得到的是功能（收益）。接口越简单，认知负荷越低、需要记住的约束越少、能产生的「未知的未知」越少；而这些功能被关在模块内部，实现可以替换而不影响调用方。所以深模块同时改善了<strong>认知负荷</strong>和<strong>可演化性</strong>。</p>
+<p>反例：浅模块把接口做成实现的镜像，使用者为了用它得先理解它的内部，等于没封装。</p>
+<p>补充两个容易记错的地方：一是深度按<strong>有效复杂度</strong>算，罕见但简单的功能不拖累深度；二是大而全不等于深，宽接口照样是浅的。</p>
+</div>
+</div>
+
+<div class="key">
+<p><strong>可以贴进 code review 的原话：</strong>「这个模块完成最常见那件事要调用方知道五件事、按顺序调四次，按有效复杂度算是浅的。能不能合并成一个入口，把顺序约束收进去？」</p>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>接下来</h2>
+
+<p>说了半天「深」，但没说<strong>怎么做到深</strong>。第 5 章给的是整本书最重要的那条技术：<em><a class="gl" href="../reference/glossary.html#information-hiding">信息隐藏</a><span class="en-inl">information hiding</span></em>。以及它最常见的失败方式：<em>信息泄漏</em>。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch04.html">第 4 章 模块应该是深的（中文全译）</a> — 原书图 4.1 的三张矩形图值得看一眼，它比任何文字都更快建立直觉。</p>
+  <p><a href="../reference/book-cheatsheet.html">全书速查</a> — 把「深度」「有效复杂度」「非正式接口」几个词放在一页里对照。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">把你手上某个头文件的公开函数列表贴给我（只要签名，不要实现）。我们一起数它的「顶边」有多宽，然后讨论哪些函数其实是在泄漏实现。</p>
+
+  <div class="nav-links">
+    <span><a href="0003-working-code-is-not-enough.html">← L3 · 工作代码是不够的</a></span>
+    <span><a href="0005-information-hiding.html">L5 · 信息隐藏 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

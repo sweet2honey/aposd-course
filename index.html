@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>软件设计的哲学 · 21 课</title>
+<link rel="stylesheet" href="assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<h1>软件设计的哲学</h1>
+<p class="standfirst">Ousterhout《A Philosophy of Software Design》全书 21 章的课程。一课一个章节、20 分钟以上，例子全部是 C / C++ / Rust。读完你会有：一把诊断复杂性的尺子、一个判断模块深度的标准、一份能在评审时直接照着念的危险信号（red flag）清单。</p>
+
+<div class="key">
+<p><strong>贯穿全书的那句话：</strong>复杂性是唯一值得对抗的东西。其他一切（深模块、信息隐藏、通用接口、例外设计、注释、命名）都是它的推论。</p>
+</div>
+
+<h2><span class="num">路线</span>三条读法，任选一条</h2>
+
+<div class="grid2">
+<div class="card">
+<h4>按痛点读（推荐先走这条）</h4>
+<p>你的三个真实问题各自对应哪几课：</p>
+<ul>
+<li><strong>改一处要动好几处、怕漏</strong><br>L2 变更放大 → L5 信息泄漏 → L9 该合该分 → L17 一致性</li>
+<li><strong>评审说不出所以然</strong><br>L1 危险信号约定 → L4 深度 → L7 透传 → L13 注释 → L18 显而易见</li>
+<li><strong>模块拆得不对、越拆越乱</strong><br>L4 深模块 → L6 通用性 → L7 分层 → L9 合并与拆分</li>
+</ul>
+</div>
+<div class="card">
+<h4>按章号读（从头到尾）</h4>
+<p>书本身是递进的：上半部（1–9）建立判断标准，下半部（10–18）是具体技术，19–21 收口。21 课按章号顺序排下来就是作者的论证顺序，第一次系统读走这条。</p>
+<p>赶时间的读法：L1、L2、L4、L5、L9、L20 六课覆盖全书 80% 的实用价值。</p>
+</div>
+</div>
+
+<h2><span class="num">上半部</span>建立判断标准（第 1–9 章）</h2>
+
+<ol>
+  <li><a href="lessons/0001-complexity-is-the-enemy.html">复杂性是唯一的敌人</a> — 为什么整本书只关心一件事；设计为什么永不完成。 <span class="term">第 1 章</span></li>
+  <li><a href="lessons/0002-symptoms-of-complexity.html">复杂性的症状与成因</a> — 三个症状、两个成因。给你一把尺子。 <span class="term">第 2 章</span></li>
+  <li><a href="lessons/0003-working-code-is-not-enough.html">工作代码是不够的</a> — 战术与战略；那 10–20% 该怎么花。 <span class="term">第 3 章</span></li>
+  <li><a href="lessons/0004-modules-should-be-deep.html">模块应该是深的</a> — 全书最有名的一张图；类炎是什么。 <span class="term">第 4 章</span></li>
+  <li><a href="lessons/0005-information-hiding.html">信息隐藏（和泄漏）</a> — 怎么做到深；时间分解为什么危险。 <span class="term">第 5 章</span></li>
+  <li><a href="lessons/0006-general-modules.html">通用模块更深入</a> — 接口要比当前需求更通用一点，反而更简单。 <span class="term">第 6 章</span></li>
+  <li><a href="lessons/0007-different-layers.html">不同的层，不同的抽象</a> — 透传方法与透传变量；装饰器为什么常常是错的。 <span class="term">第 7 章</span></li>
+  <li><a href="lessons/0008-lower-complexity.html">降低复杂性</a> — 默认值、内部调节；让常见情况不需要配置。 <span class="term">第 8 章</span></li>
+  <li><a href="lessons/0009-better-together-or-apart.html">在一起更好，还是分开更好？</a> — 合并与拆分的判据；方法长度不是理由。 <span class="term">第 9 章</span></li>
+</ol>
+
+<h2><span class="num">下半部</span>具体技术（第 10–18 章）</h2>
+
+<ol start="10">
+  <li><a href="lessons/0010-define-errors-out-of-existence.html">通过定义规避错误</a> — 异常是复杂性的重灾区；四种削减法。 <span class="term">第 10 章</span></li>
+  <li><a href="lessons/0011-design-it-twice.html">设计两次</a> — 第二个设计总比第一个好；一次只花一小时。 <span class="term">第 11 章</span></li>
+  <li><a href="lessons/0012-why-write-comments.html">为什么要写注释</a> — 拆掉四个最常见的借口。 <span class="term">第 12 章</span></li>
+  <li><a href="lessons/0013-comments-describe-nonobvious.html">注释该写什么</a> — 描述代码里不明显的东西；接口注释与实现注释分工。 <span class="term">第 13 章</span></li>
+  <li><a href="lessons/0014-choosing-names.html">选择的名字</a> — 名字是抽象；精确、一致、能造出画面。 <span class="term">第 14 章</span></li>
+  <li><a href="lessons/0015-write-comments-first.html">先写注释</a> — 把注释当设计工具，而不是事后补的文档。 <span class="term">第 15 章</span></li>
+  <li><a href="lessons/0016-modifying-existing-code.html">修改现有的代码</a> — 在烂代码上干活，如何不跟着一起烂。 <span class="term">第 16 章</span></li>
+  <li><a href="lessons/0017-consistency.html">一致性</a> — 最强的一类「显而易见」，以及怎么维持它。 <span class="term">第 17 章</span></li>
+  <li><a href="lessons/0018-obvious-code.html">代码应该是显而易见的</a> — 让代码更明显的做法，和让它更晦涩的做法。 <span class="term">第 18 章</span></li>
+</ol>
+
+<h2><span class="num">收口</span>趋势、性能、结论（第 19–21 章）</h2>
+
+<ol start="19">
+  <li><a href="lessons/0019-trends.html">软件发展趋势</a> — 继承、敏捷、单测、TDD、设计模式、getter/setter：逐个用本书的尺子量一遍。 <span class="term">第 19 章</span></li>
+  <li><a href="lessons/0020-designing-performance.html">设计性能</a> — 简单本身就是性能；度量而非猜测；围绕关键路径设计。 <span class="term">第 20 章</span></li>
+  <li><a href="lessons/0021-conclusion.html">结论</a> — 全书主线收成一张图，21 条原则与 14 个危险信号一次带走（书末官方的 15 条也在内）。 <span class="term">第 21 章</span></li>
+</ol>
+<p>21 课之外还有一份 <a href="lessons/0022-field-audit-tcpbuf.html">L22 · 实战审查</a>：拿一份真实 C++ 代码走完三件套（深度、泄漏、变更放大）。它不是第 22 章，是前面 21 课的落地练习。</p>
+
+<h2><span class="num">速查</span>两张纸</h2>
+<ul>
+  <li><a href="reference/book-cheatsheet.html">全书速查（一页纸，可打印）</a> — 15 条原则、14 个危险信号、21 章索引、诊断流程。</li>
+  <li><a href="reference/glossary.html">术语表</a> — 全书 62 条术语，中英对照，含「避免这样说」的误用提示。课程正文里术语第一次出现处都链到这里，点一下直达该条。</li>
+</ul>
+
+<h2><span class="num">背景</span>这次学什么、为什么</h2>
+<p>目标写在 <a href="MISSION.md">MISSION.md</a> 里：拿到一套能在写代码<strong>当下</strong>使用的判断标准，而不是事后重构的清单。读者画像是 C / C++ / Rust、偏底层与性能敏感，所以全书所有 Java 例子都被换成了对应语言的等价物。</p>
+<p>资源清单在 <a href="RESOURCES.md">RESOURCES.md</a>（作者官方书页、Parnas 1972 原始论文、作者亲自答疑的邮件列表）。工作笔记在 <a href="NOTES.md">NOTES.md</a>。</p>
+
+<div class="foot">
+  <h4>原文</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/">《软件设计的哲学》中文全译</a> — 每课页脚都链到对应章节。英文原书信息见 <a href="https://web.stanford.edu/~ouster/cgi-bin/book.php">作者书页</a>。</p>
+  <h4>随时问我</h4>
+  <p class="ask">这些课是骨架，真正的学习发生在你把自己的代码贴进来的时候。任何一课读着别扭、不同意、或者想直接上手改一段真实代码，开口就行。最有价值的一次用法：挑你手上最纠结的那个模块，我们从头到尾走一遍全书的三件套（深度、泄漏、变更放大）。</p>
+</div>
+
+</main>
+</body>
+</html>

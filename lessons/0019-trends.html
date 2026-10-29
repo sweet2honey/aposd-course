@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L19 · 软件发展趋势 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 19 章 · 课程 19 / 21</p>
+
+<h1>软件发展趋势</h1>
+<p class="standfirst">这一章不教你新东西，它教你一件事：拿到任何流行做法，先问「它到底削掉了哪种复杂度」。六种趋势，六次过闸门。</p>
+
+<h2><span class="num">19.1</span>机制不等于设计</h2>
+
+<p>前面十八章讲的是原理，这一章讲的是「别人告诉你的最佳实践」。作者把过去三四十年最响的六个名字摆上台：面向对象与继承、敏捷、单元测试、<a class="gl" href="../reference/glossary.html#test-driven-development">测试驱动开发</a><span class="en-inl">test-driven development</span>、设计模式、getter/setter。然后对每一个都问同一个问题：<strong>它是否真的降低了大型系统的<a class="gl" href="../reference/glossary.html#complexity">复杂性</a><span class="en-inl">complexity</span>？</strong></p>
+
+<p>这个问题之所以必要，是因为「流行」和「有效」之间没有因果关系。一个机制进入语言、进入教科书、进入面试题，只说明它被广泛采用，不说明它在你这个系统里降低了复杂度。作者的态度很直接，也是本章最该带走的一句：</p>
+
+<blockquote>
+<p>每当您遇到有关新软件开发范例的提案时，就必须从复杂性的角度对其进行挑战：该提案确实有助于最大程度地降低大型软件系统的复杂性吗？</p>
+<cite>第 19 章 · 结论</cite>
+</blockquote>
+
+<p>下面这些，你大概每天都在用。但用得好不好，取决于你有没有认出它们的<em>收益从哪来、代价从哪来</em>。</p>
+
+<table>
+  <thead><tr><th>趋势</th><th>它真正的收益</th><th>它真正的代价</th></tr></thead>
+  <tbody>
+    <tr><td><a class="gl" href="../reference/glossary.html#interface-inheritance">接口继承</a><span class="en-inl">interface inheritance</span></td><td>一个接口适配多种实现，接口变深</td><td>几乎没有——前提是父类不带状态</td></tr>
+    <tr><td><a class="gl" href="../reference/glossary.html#implementation-inheritance">实现继承</a><span class="en-inl">implementation inheritance</span></td><td>消除子类间的重复，减少<a class="gl" href="../reference/glossary.html#change-amplification">变更放大</a><span class="en-inl">change amplification</span></td><td>父子共享状态，形成层次内的<a class="gl" href="../reference/glossary.html#information-leakage">信息泄漏</a><span class="en-inl">information leakage</span></td></tr>
+    <tr><td>敏捷</td><td>小步迭代、拥抱重构</td><td>容易被读成「先上功能，设计以后再说」</td></tr>
+    <tr><td>单元测试</td><td>让重构变得安全，于是设计可以被修正</td><td>写测试的时间是真金白银</td></tr>
+    <tr><td>设计模式</td><td>常见问题有现成的干净解</td><td>过度套用，把问题硬塞进模式</td></tr>
+    <tr><td>getter / setter</td><td>改取值方式时不改接口</td><td><a class="gl" href="../reference/glossary.html#shallow-method">浅方法</a><span class="en-inl">shallow method</span>撑大接口，内部表示照样外泄</td></tr>
+  </tbody>
+</table>
+
+<h2><span class="num">19.2</span>继承的两副面孔</h2>
+
+<p>这一节是全章最有价值的部分，因为它把一个笼统的「继承好不好」拆成了两个东西，而这两者对复杂性的作用<strong>方向相反</strong>。</p>
+
+<p><strong>接口继承</strong>：父类只声明签名，不实现。C++ 里是纯虚基类，Rust 里是裸 trait。它的收益是本书对「深」的另一种算法：<em>同一个接口的实现越多，这个接口越深</em>。因为它必须只保留所有实现共有的本质，把差异全部挡在接口之外；抽象的定义就是这个。</p>
+
+<p><strong>实现继承</strong>：父类不但给签名，还给默认实现，通常还带实例变量。它的收益是真的：几个子类不必重复同一段代码，于是「改一处」而不是「改五处」，变更放大被压下去了。</p>
+
+<p>但代价也在同一处：父类的实例变量通常被父类和所有子类一起访问。</p>
+
+<div class="excerpt">
+<span class="src">第 19 章 · 实现继承的成本</span>
+<p>实现继承会在父类及其每个子类之间创建依赖关系。父类中的实例变量经常被父类和子类同时访问，这导致继承层次中的类之间出现信息泄漏，并使修改层次中的一个类时很难不考虑其他类。在最坏的情况下，程序员需要完全了解父类下的整个层次结构，才能对任何一个类做出修改。广泛使用实现继承的层次结构往往具有很高的复杂性。</p>
+</div>
+
+<p>这里的因果链很清楚：<strong>共享状态 → 信息泄漏 → <a class="gl" href="../reference/glossary.html#dependency">依赖</a><span class="en-inl">dependency</span> → <a class="gl" href="../reference/glossary.html#cognitive-load">认知负荷</a><span class="en-inl">cognitive load</span></strong>。它和你在第 5 章学到的<a class="gl" href="../reference/glossary.html#back-door-leakage">后门泄漏</a><span class="en-inl">back-door leakage</span>是同一个病，只是换了个位置：泄漏不在两个平级<a class="gl" href="../reference/glossary.html#module">模块</a><span class="en-inl">module</span>之间，而在一条继承链的上下之间。</p>
+
+<p>作者给的两条对策，按优先级：</p>
+
+<ol>
+  <li><strong>先用组合</strong>。把共享功能做成一个小辅助类，让原来的类各自持有一个（或按值内嵌一个），而不是从父类继承。功能一样共享，状态不再共享。</li>
+  <li><strong>实在要用实现继承</strong>，就把父类管理的状态和子类管理的状态分开：某些成员只由父类的方法读写，子类只能读，或者必须经由父类的其他方法间接改。</li>
+</ol>
+
+<div class="card">
+<h4>对 C / C++ / Rust 读者的翻译</h4>
+<p><strong>C++</strong>：带数据成员的基类 + 子类直接摸 <code>protected</code> 成员，就是标准的实现继承陷阱。<code>protected</code> 不是「内部」，它是<strong>对所有未来的子类公开的接口</strong>——一旦发布，你改不动它。</p>
+<p><strong>Rust</strong>：trait 只有接口继承，trait 的默认方法也不携带状态，所以 Rust 天然躲开了这个坑。代价是共享代码要靠 <code>impl</code> 块、泛型约束或组合来组织——这恰好逼你走「组合优先」那条路。</p>
+<p><strong>C</strong>：手写 vtable（函数指针表）是接口继承；把结构体第一个成员做成「基类」再强转，就是实现继承，而且连编译器的类型检查都没有——同一种泄漏，更隐蔽。</p>
+</div>
+
+<div class="anti">
+<h4>反例 · 基类的 protected 状态</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>class Conn {
+protected:
+    int fd_;                  // 子类直接读写
+    std::vector&lt;uint8_t&gt; in_;
+    size_t consumed_ = 0;
+public:
+    virtual ssize_t fill() = 0;
+    virtual ~Conn() = default;
+};
+
+class TlsConn : public Conn {
+public:
+    ssize_t fill() override {
+        ssize_t n = ::read(fd_,
+            in_.data() + in_.size(), 4096);
+        if (n &lt;= 0) return n;
+        in_.resize(in_.size() + n);
+        return decrypt(in_, consumed_);
+    }
+};</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>三个成员全是 <code>protected</code>，等于把「缓冲区怎么表示、游标怎么走」宣布成公开契约。想给 <code>in_</code> 换成环形缓冲、想给 <code>consumed_</code> 换成指针，都要改所有子类。</p>
+<p>反过来，<code>TlsConn</code> 的 <code>fill()</code> 必须懂基类的缓冲区约定：<code>resize</code> 之后 <code>data()</code> 会不会失效、<code>consumed_</code> 由谁推进。这是第 2 章的<a class="gl" href="../reference/glossary.html#unknown-unknowns">未知的未知</a><span class="en-inl">unknown unknowns</span>——读 <code>TlsConn</code> 的人看不出它依赖了这些约定。</p>
+<p>还有一个附带伤害：<code>TlsConn</code> 的测试必须构造出 <code>Conn</code> 的那套状态，没法单独测。</p>
+</div>
+</div>
+<p>改法：让 <code>Conn</code> 只保留一个纯虚接口 <code>fill(uint8_t* dst, size_t cap)</code>，把「读 + 解密 + 游标」的实现下沉成一个独立的 <code>ByteStream</code>，由具体连接<strong>按值持有</strong>。这样共享的是代码，不是状态；改缓冲区表示只碰 <code>ByteStream</code> 一个文件。</p>
+</div>
+
+<h2><span class="num">19.3</span><a class="gl" href="../reference/glossary.html#unit-of-development">开发的增量单位</a><span class="en-inl">unit of development</span>应该是抽象，不是功能</h2>
+
+<p>敏捷对本书是「部分兼容」。它最核心的那条主张，开发应该是渐进的、迭代的，和本书一致：项目开始时没人能预见正确的设计，好设计只能靠一个个增量长出来。</p>
+
+<p>但敏捷有一个被反复误读的副作用：它把注意力放在<strong>功能</strong>上，鼓励「先做能跑的最小版本，等真需要了再重构」。作者认为这实质上就是<a class="gl" href="../reference/glossary.html#tactical-programming">战术编程</a><span class="en-inl">tactical programming</span>，会快速积累复杂度。他给的替代口径很短：</p>
+
+<div class="excerpt">
+<span class="src">第 19 章 · 增量单位</span>
+<p>渐进式开发通常是个好主意，但软件开发的增量应该是抽象，而不是功能。可以推迟对某个抽象的所有想法，直到功能真的需要它为止。一旦需要这个抽象，就要花一些时间做简洁的设计——遵循第 6 章的建议，让它具有通用性。不要在一段时间里零散地把抽象一块块拼出来，而应一次设计到位，至少覆盖一组合理完整的核心功能。</p>
+</div>
+
+<p>这句话直接对应你的第一个痛点：<em>改一个需求要动好几处，怕漏。</em> 为什么会长成那样？因为抽象是零散长出来的——第一版只支持文件，第二版加了个 <code>if (is_socket)</code>，第三版又加 <code>if (is_mmap)</code>。每加一个功能，你都要回到那个函数里再插一个分支。功能在增长，抽象从未被设计过。</p>
+
+<p>正确的节奏是反的：<strong>功能可以拖延，抽象不能拖延。</strong> 你完全可以只实现「读本地文件」这一种情况，但在写下第一个字节之前，先花二十分钟想清楚「输入源」这个抽象该长什么样——它藏起什么、暴露什么、未来加 socket 时要不要改接口。二十分钟买的是后面三年不用动接口。</p>
+
+<div class="key">
+<p><strong>一句话：</strong>功能是消耗品，可以后补；抽象是地基，补不了。每次要「先写个特例、以后再说」的时候，先问自己：这个特例会不会变成接口的一部分？</p>
+</div>
+
+<h2><span class="num">19.4</span>测试是重构的许可证</h2>
+
+<p>这一节在书里被低估了。作者说测试的作用不只是抓 bug，更是<strong>让重构变得可行</strong>：没有测试套件，对系统做结构性改动就是在赌命；赌不起，于是所有人都选择「尽量少改」，而设计错误就永久留在那儿。</p>
+
+<p>他举了自己项目里的例子：Tcl 把解释器换成字节码编译器，几乎动了核心引擎的每一部分；因为有出色的单元测试套件，alpha 版发布后只出现了一个 bug。</p>
+
+<p>对底层读者，这条尤其重要。C/C++ 代码库里最不敢动的往往是内存布局和所有权约定——因为改错就是段错误或数据损坏，而不是一个断言失败。这正是「设计错误得不到修正」的重灾区：明明知道这个结构体该拆，但没人敢拆。</p>
+
+<p>所以单元测试的价值在本书框架里可以这样表述：<strong>它是把「修改的风险」压到可接受范围的工具，因而也是让第 3 章的<a class="gl" href="../reference/glossary.html#strategic-investment">战略投资</a><span class="en-inl">strategic investment</span>能够落地的前提。</strong> 没有它，那 10–20% 的设计时间根本花不出去。</p>
+
+<h2><span class="num">19.5</span>TDD：一个例外，而且是最好的例外</h2>
+
+<p>作者自称是单元测试的坚定拥护者，但对测试驱动开发不热衷。理由很干脆：TDD 把注意力锁在「让这个测试变绿」上，而任何时刻都很容易再写一个功能、再让一个测试变绿，于是<strong>没有一段时间是留给设计的</strong>。这是纯粹的战术编程。</p>
+
+<p>但他给了一个明确的例外，而且这个例外值得写进团队规范：</p>
+
+<div class="excerpt">
+<span class="src">第 19 章 · 修 bug 时先写测试</span>
+<p>有一个地方先写测试是有意义的，那就是修 bug 的时候。在修复错误之前，先写一个因为该错误而失败的单元测试；然后修复它，并确认测试通过。这是确保你真的修好了这个错误的最好方法。如果你先修好了错误再补测试，新的测试很可能根本不会触发那个错误，于是它并不能告诉你问题是否真的解决了。</p>
+</div>
+
+<p>把它变成一句可以在评审里说的话：<strong>「这个 bug 的复现测试在哪？先让它红。」</strong> 这句话有两个作用：一是挡住「改了但没修好」，二是挡住「修好了但下次会再犯」。</p>
+
+<h2><span class="num">19.6</span>设计模式与 getter/setter：两种过度使用</h2>
+
+<p>设计模式本身没问题。它们之所以存在，是因为反复解决了同一类问题，而且通常给出了干净的解法。风险只有一个：<strong>过度使用</strong>。不是每个问题都该塞进一个现成的模式；当自定义解法更简单时，套模式只是给自己加了一层要读懂的东西。作者的原话是：使用设计模式并不会自动改善系统，只有在模式<em>合适</em>的时候才会。</p>
+
+<p>他挑出来当反面教材的，是 Java 社区里最流行的那一个：getter 和 setter。</p>
+
+<p>论证是这样的：如果实例变量本来就不该公开，那么正确的做法是<strong>不公开</strong>，而不是给它配一对方法。getter/setter 通常只有一行，是标准的浅方法——它们在几乎不提供功能的情况下把接口撑大，同时把内部表示（字段名、类型、可变性）原封不动地写进了公开 API。所谓「以后可以加校验而不改接口」的收益，只在「你确实要公开这个变量」的前提下才成立；而大多数情况下你根本不需要公开它。</p>
+
+<p>换成你熟悉的语言：</p>
+
+<ul>
+  <li><strong>C++</strong>：<code>int size() const { return size_; }</code> 这种一行转发，如果外部只需要「大小」而不需要「那个成员」，更好的设计是让外部根本不需要问——比如提供一个 <code>empty()</code>、或者让遍历自己知道何时结束。</li>
+  <li><strong>Rust</strong>：<code>pub struct</code> 的 <code>pub</code> 字段就是裸奔的实例变量；给它加 <code>pub fn field(&amp;self) -&gt; T</code> 只是换了个写法。问题是：调用方拿这个值去干什么？如果答案是「自己算下一步」，那说明有一段知识本该在模块里。</li>
+  <li><strong>C</strong>：结构体字段全是公开的，根本没有「藏」这个选项——所以 C 的做法是把不透明指针（<code>struct Foo;</code> + 操作函数）当接口，那才是真正的<a class="gl" href="../reference/glossary.html#information-hiding">信息隐藏</a><span class="en-inl">information hiding</span>。</li>
+</ul>
+
+<div class="key">
+<p><strong>一句能贴进评审的话：</strong>「这个 getter 只是把字段念了一遍——调用方拿到它之后自己做了什么判断？那段判断应该搬进来。」</p>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>过闸门</h2>
+
+<p>四个场景，都在真实代码库里常见。判断它们属于哪种情况。</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>一个 <code>Buffer</code> 基类带着 <code>capacity_</code>、<code>len_</code> 两个 <code>protected</code> 成员，五个子类各自实现 <code>append()</code> 并直接修改它们。</p>
+    <div class="opts">
+      <button data-ok="1">实现继承的泄漏</button>
+      <button>接口继承，用得好</button>
+      <button>只是命名不好</button>
+    </div>
+    <p class="note">共享的不是接口，是状态。改 <code>len_</code> 的表示要动五个子类，而且要保证五处的语义一致——这就是层次内的信息泄漏。改法：抽一个 <code>ByteBuf</code> 按值持有，或至少把状态改成私有 + 只读访问。</p>
+  </div>
+
+  <div class="row">
+    <p>一个 <code>struct Reader { virtual size_t read(uint8_t*, size_t) = 0; }</code>，文件、socket、内存映射各有实现；接口里没有任何数据成员。</p>
+    <div class="opts">
+      <button>实现继承的泄漏</button>
+      <button data-ok="1">接口继承，用得好</button>
+      <button>过度抽象，该合并</button>
+    </div>
+    <p class="note">父类零状态、零默认实现，只有签名。三个实现越多，这个接口越深——这正是本书认可的「接口继承提供对抗复杂性的杠杆」。</p>
+  </div>
+
+  <div class="row">
+    <p>团队按敏捷节奏两个迭代做完「导出 CSV」，第三个迭代做「导出 JSON」时复制了整个 <code>Exporter</code>，只改了序列化那二十行。</p>
+    <div class="opts">
+      <button>正确的复用</button>
+      <button data-ok="1">功能驱动，抽象缺位</button>
+      <button>测试覆盖不足</button>
+    </div>
+    <p class="note">增量单位是功能，不是抽象。第二个格式出现的那一刻，<code>Exporter</code> 的接口（藏什么、暴露什么）其实已经被确定了，但没人去设计它，于是靠复制绕过。复制之后，改字段顺序要改两处。</p>
+  </div>
+
+  <div class="row">
+    <p>修一个 <code>mmap</code> 越界读的 bug：于是先写一个在旧代码上必崩的测试，再改 <code>map_len</code> 的计算，最后确认测试通过。</p>
+    <div class="opts">
+      <button>过度流程，应直接改</button>
+      <button>纯战术编程</button>
+      <button data-ok="1">TDD 的合理例外</button>
+    </div>
+    <p class="note">书里点名的例外就是修 bug。先红后绿，保证你测的确实是那个 bug，而不是一个碰巧也过的测试。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>改一段继承</h2>
+
+<div class="recall">
+<p>你有一个 <code>Parser</code> 基类，带 <code>protected std::vector&lt;Token&gt; tokens_</code> 和 <code>pos_</code>，派生出了 <code>JsonParser</code>、<code>YamlParser</code>、<code>TomlParser</code>。三个子类都在自己的 <code>parse_value()</code> 里推 <code>pos_</code>、读 <code>tokens_</code>。客户要加第四种格式。用第 19 章的视角，你该做什么？</p>
+<p class="hint-inline">提示：先别问「要不要加一层基类」。</p>
+<textarea placeholder="共享的是什么？哪些应该是接口，哪些应该被藏起来？"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p>先分清两个东西：<strong>token 流和游标</strong>是一个抽象，<strong>语法</strong>是另一个抽象。现在它们被同一个基类混在一起，于是三个子类都必须懂 <code>tokens_</code> 的内部约定（末尾有没有 sentinel、<code>pos_</code> 越界代表什么）。</p>
+<ul>
+  <li>把 <code>tokens_</code> + <code>pos_</code> 收进一个<strong>按值持有</strong>的 <code>TokenStream</code>，接口是 <code>peek()</code>、<code>next()</code>、<code>expect(kind)</code>。三个子类从此只能通过这三个方法看输入，再也碰不到容器。</li>
+  <li><code>Parser</code> 变成纯接口：<code>virtual Node parse(TokenStream&amp;) = 0;</code>。零状态、零默认实现，这就是接口继承。</li>
+  <li>三种格式共享的「错误恢复」逻辑，如果确实一样，做成自由函数或 <code>TokenStream</code> 上的方法，而不是基类的 <code>protected</code> 成员函数。</li>
+</ul>
+<p>判据还是老一条：<strong>加第四种格式时，你希望只碰一个新文件。</strong> 如果实现完还要回头改基类，说明那个知识没藏好。</p>
+<p>另外要诚实：如果三种格式的语法其实高度相似（比如都是 JSON 的超集），那更好的答案可能是<strong>一个解析器加配置</strong>，而不是三个类。这正是第 6 章「通用模块更深入」要问的问题——先问要不要拆，再问怎么拆。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>这一章的位置</h2>
+
+<p>第 19 章是全书唯一一章「向外看」的：它把前面所有原理当成一把尺子，去量外部世界给你的东西。量完的结论有点反直觉——<strong>这些趋势里没有一个自动带来好设计，它们只是把「做不做设计」这个选择交回到你手上。</strong></p>
+
+<p>下一章要处理一个很多人以为与本书无关的问题：性能。而它的答案会再一次落在「简单」上。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch19.html">第 19 章 软件发展趋势（中文全译）</a> — 继承那一节值得读原文，作者对「<a class="gl" href="../reference/glossary.html#depth">深度</a><span class="en-inl">depth</span>」和「实现数量」的关系有一段更完整的推演。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">把你项目里最老的那条继承链贴给我（哪怕只有三层）：父类有几个 <code>protected</code> 成员？子类各自用到了哪几个？我们可以一起判断它是接口继承还是状态继承，以及拆成组合要付多少代价。</p>
+
+  <div class="nav-links">
+    <span><a href="0018-obvious-code.html">← L18 · 代码应该是显而易见的</a></span>
+    <span><a href="0020-designing-performance.html">L20 · 设计性能 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

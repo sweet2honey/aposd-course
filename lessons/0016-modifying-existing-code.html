@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L16 · 修改现有的代码 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 16 章 · 课程 16 / 21</p>
+
+<h1>修改现有的代码</h1>
+<p class="standfirst">你 90% 的代码时间不是在写新<a class="gl" href="../reference/glossary.html#module">模块</a><span class="en-inl">module</span>，而是在别人写的函数里加一个分支。这一章讲的是那个时刻的判断标准：最小改动往往是最贵的改动，而「先让它跑起来」是一笔按天计息的高利贷。</p>
+
+<h2><span class="num">16.1</span>最小改动是最贵的改动</h2>
+
+<p>第 3 章把「<a class="gl" href="../reference/glossary.html#tactical-programming">战术编程</a><span class="en-inl">tactical programming</span>」和「<a class="gl" href="../reference/glossary.html#strategic-programming">战略编程</a><span class="en-inl">strategic programming</span>」分开了：战术编程的首要目标是「尽快让它工作」，哪怕代价是额外的<a class="gl" href="../reference/glossary.html#complexity">复杂性</a><span class="en-inl">complexity</span>。当时这条区分讲的是从零开始写东西。第 16 章把它搬到一个更难的地方——<strong>你正在改一段不是你写的、你并不完全信任的代码</strong>。</p>
+
+<p>在这个场景下，几乎所有人都会滑向同一个念头：「我能做的最小改动是什么？」而且这个念头听起来还挺负责——改动小，风险小，不会引入新 bug，对吧？</p>
+
+<div class="excerpt">
+<span class="src">第 16 章 · 保持战略性</span>
+<p>不幸的是，当开发者进入既有代码去做修改（比如修 bug 或加功能）时，通常不会从战略角度思考。一个典型的心态是「我能做出的、满足我需要的最小改动是什么？」有些人觉得这很合理，因为他对要改的代码不放心，担心更大的改动意味着更大的引入新 bug 的风险。</p>
+<p>但这正是战术编程。<strong>每一个这样的最小改动都会引入几个特殊情况、依赖，或者其他形式的复杂性。</strong>结果系统设计变得差了一点，而问题会随着系统演化的每一步累积起来。</p>
+</div>
+
+<p>「引入几个<a class="gl" href="../reference/glossary.html#special-case">特殊情况</a><span class="en-inl">special case</span>」这句话值得逐字拆开看，因为它是本章所有诊断的根。一个战术补丁在 C/C++ 里通常长成这三种样子：</p>
+
+<ul>
+  <li><strong>多一个 bool 参数。</strong><code>void flush(bool force)</code>。第二个需求来了，就变成 <code>flush(bool force, bool sync)</code>；第三个需求来了，你会开始考虑 <code>std::bitset</code>。每个调用点都要重新回答一遍「我该传什么」。</li>
+  <li><strong>多一个 if 分支，只有一处需要。</strong>于是某个函数里出现了一个「只有 A 路径会走」的分支，而它<a class="gl" href="../reference/glossary.html#dependency">依赖</a><span class="en-inl">dependency</span>一个「只有 A 路径才会设置」的成员。这条隐式的调用顺序不会出现在任何签名里——这就是第 2 章的<strong><a class="gl" href="../reference/glossary.html#unknown-unknowns">未知的未知</a><span class="en-inl">unknown unknowns</span></strong>。</li>
+  <li><strong>多一个旁路。</strong>不动原函数，在旁边新写一个 <code>flush_fast()</code>，让它复制 60 行再改两行。从此「刷新」这件事有了两个真相，而它们会分叉。</li>
+</ul>
+
+<p>三种形态的共同点是：<em>改动本身很小，但它给系统留下的长期成本不小。</em>这就是本章最反直觉的一句话——<strong>改动的大小和它造成的复杂度没有关系。</strong>一个两行的补丁可以让三个调用点从此必须遵守一条没写下来的规则。</p>
+
+<div class="key">
+<p><strong>评审时可以直接说的一句话：</strong>「这个补丁本身没问题，但它把一条新规则（<em>调用方必须先 A 再 B</em>）塞进了调用约定，而没有塞进类型或接口。下一个改这里的人不会知道这条规则。能不能让编译器替我们记住它？」</p>
+</div>
+
+<h2><span class="num">16.2</span>完成的定义：像一开始就设计过</h2>
+
+<p>书里给了一个很高的标准，但它是本章唯一可操作的目标：</p>
+
+<div class="excerpt">
+<span class="src">第 16 章 · 理想状态</span>
+<p>如果你想为一个系统保持简洁的设计，那么在修改既有代码时就必须采取战略性的方法。<strong>理想情况下，当你完成每一次改动时，系统的结构应当和「你一开始就带着这个改动去设计它」所能得到的一样。</strong></p>
+<p>为了做到这一点，你必须抵制快速修复的诱惑。相反，你要根据这次想要的变化去重新审视：当前的设计是否仍然是最好的？如果不是，就重构系统，让最终得到的是可能的最好设计。按这种方式，<strong>系统设计会随着每一次修改而变好。</strong></p>
+</div>
+
+<p>把这段话翻译成日常动作，就是三个问题，改代码之前按顺序问一遍：</p>
+
+<ol>
+  <li><strong>这次改动，需要哪个模块多知道一件事？</strong>如果答案是「三个模块都要多知道一点」，那知识没有被藏好（第 5 章的<a class="gl" href="../reference/glossary.html#information-leakage">信息泄漏</a><span class="en-inl">information leakage</span>），而这次改动正是一个把它收拢的机会。</li>
+  <li><strong>改完之后，那个「多知道的一件事」是活在接口里，还是活在每个人的记忆里？</strong>活在记忆里的部分，就是下一次<a class="gl" href="../reference/glossary.html#change-amplification">变更放大</a><span class="en-inl">change amplification</span>的种子。</li>
+  <li><strong>有没有一个版本，成本只比补丁高一点点，但把这件事放进了类型系统？</strong>这几乎总是存在的，而且往往就在手边——一个 <code>enum class</code>、一个带默认值的结构体、一个 <code>[[nodiscard]]</code>。</li>
+</ol>
+
+<p>第 1 个问题的措辞是「多知道一件事」，不是「多调一个函数」。前者是设计问题，后者是排版问题。绝大多数评审争论之所以说不出所以然，就是因为它停在「多调一个函数」这一层，而没人把它翻译成「多知道一件事」。</p>
+
+<div class="anti">
+<h4>反例：三个重载养出来的调用约定</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>// kv_store.h
+int put(const std::string&amp; key,
+        const std::string&amp; val);
+
+// 第二个需求：要能设过期时间
+int put(const std::string&amp; key,
+        const std::string&amp; val,
+        int64_t ttl_ms);
+
+// 第三个需求：要能要求落盘后才返回
+int put(const std::string&amp; key,
+        const std::string&amp; val,
+        int64_t ttl_ms, bool sync);</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>每一次加需求都是「最小改动」，三次之后：</p>
+<p>① 三个重载，语义在名字上看不出来，新人得读三遍实现才知道 <code>ttl_ms=0</code> 是什么含义。</p>
+<p>② 第四个需求（比如「压缩阈值」）来时，你没有第四个重载可加——参数已经四个了，只能再开一个 <code>put_opt()</code>。</p>
+<p>③ <code>bool</code> 在调用点完全不可读：<code>put(k, v, 5000, true)</code> 里的 <code>true</code> 是「落盘」还是「不落盘」？<strong>调用点必须回查声明</strong>，这是纯粹的<a class="gl" href="../reference/glossary.html#cognitive-load">认知负荷</a><span class="en-inl">cognitive load</span>。</p>
+<p>④ 所有调用点是同时被牵动的：想给默认行为加一层校验，得改三个函数的实现，且必须保证三份逻辑永远一致。</p>
+</div>
+</div>
+<p>改法：把「一次写入有哪些可选项」这件事收进一个结构体。加第四个选项时，<strong>旧调用点一个字都不用改</strong>。</p>
+<pre><code>// kv_store.h
+struct PutOptions {
+  int64_t ttl_ms = 0;      // 0 表示永不过期
+  bool    sync   = false;  // true 表示返回前已落盘
+};
+
+// 写入一条记录；失败返回负的 errno，成功返回 0。
+// 同一 key 的并发写入以最后落盘者为准。
+int put(std::string_view key, std::string_view val,
+        const PutOptions&amp; opt = {});</code></pre>
+<p>这不是「设计得更漂亮」，而是<strong>把变化点从 N 个调用点挪到了 1 个结构体</strong>。前者是战术，后者是战略。差别不在代码量（新版还更短），在「下一次改需求要动几处」。</p>
+</div>
+
+<h2><span class="num">16.3</span>保持在代码库现状之上，而不是顺势下滑</h2>
+
+<p>这一章有个隐含假设值得明说：<strong>你的改动会成为下一个人的「现状」。</strong>如果周边代码用裸 <code>new</code>/<code>delete</code> 管理生命周期，而你新加的路径也用裸指针，理由是「跟周围保持一致」，那么六个月后清理的人要改的范围就从一个文件变成两个。<strong>「和坏代码保持一致」是唯一一种不该被<a class="gl" href="../reference/glossary.html#consistency">一致性</a><span class="en-inl">consistency</span>原则豁免的例外。</strong></p>
+
+<p>书里那句话的措辞比「不要变坏」更狠：</p>
+
+<div class="excerpt">
+<span class="src">第 16 章 · 投资心态</span>
+<p>即使你这次的具体改动并不需要重构，你也应当留意那些顺手就能修掉的设计缺陷。每当你修改任何代码，都试着在这个过程中让系统设计至少好一点点。<strong>如果你没有让设计变好，那你多半正在让它变坏。</strong></p>
+</div>
+
+<p>「顺手就能修掉」的清单在 C/C++ 里非常具体，几乎每次改动都能挑到一条：</p>
+
+<table>
+  <thead><tr><th>顺手能做的</th><th>为什么它值得在那次改动里做</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>把一个 <code>bool</code> 参数换成 <code>enum class</code></td>
+      <td>调用点从 <code>f(x, true)</code> 变成 <code>f(x, Mode::Sync)</code>；改动只有声明和几个调用点，但从此不用回查签名</td>
+    </tr>
+    <tr>
+      <td>给返回值加 <code>[[nodiscard]]</code></td>
+      <td>你这次改动之所以要读这个函数，很可能就是因为有人忽略了它的返回值</td>
+    </tr>
+    <tr>
+      <td>把裸 <code>malloc</code>/<code>free</code> 对换成一个 <code>std::unique_ptr</code></td>
+      <td>你已经在读这段代码了，边际成本最低；下一次改动就不用再验证一遍释放路径</td>
+    </tr>
+    <tr>
+      <td>把一处从阅读看不出原因的写法补上注释</td>
+      <td>你刚刚花时间搞懂了它，此刻你是唯一知道答案的人</td>
+    </tr>
+    <tr>
+      <td>删掉一个已经没人调用的函数</td>
+      <td>删代码是唯一零风险的设计改进</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>反面同样具体：<strong>新加的代码复制了旧代码里的坏模式，哪怕只是一次。</strong>旧代码里有个 `int` 返回错误码、`-1` 表示失败、但 `-1` 也可能是一个合法的计数——你新写的函数为了「保持一致」也这么干。于是错误处理这件事有了两个都不算数的真相。</p>
+
+<h2><span class="num">16.4</span><a class="gl" href="../reference/glossary.html#incremental-improvement">增量式改进</a><span class="en-inl">incremental improvement</span>，而不是等一场大重构</h2>
+
+<p>到这里一定有个现实的反驳：「照你这么说，我每次改动都要顺便重构，那功能什么时候交付？」书里正面回答了它，而且答案不是「永远选正确的方式」：</p>
+
+<div class="excerpt">
+<span class="src">第 16 章 · 与现实的冲突</span>
+<p>如果按「正确的方式」重构系统需要三个月，而一个又快又脏的修复只要两小时，那你可能不得不选择又快又脏的方式，尤其是在截止日期很紧的时候。或者，如果重构会造成不兼容、影响到许多其他人和团队，那么重构可能就不现实。</p>
+<p>尽管如此，你还是应当尽可能抵制这些妥协。问自己一句：<strong>「在我当前的约束之下，这是我能做到的、创造干净设计的最好版本吗？」</strong>也许存在另一种做法，几乎和三个月的重构一样干净，但几天就能做完？</p>
+</div>
+
+<p>「两小时 / 三天 / 三个月」这三档是关键。它把「要不要重构」这个容易吵架的是非题，变成了一个可以当场比较成本的选项题。评审时这句话比「我觉得这样不好」有力得多：</p>
+
+<div class="key">
+<p>「三个月的大重构我不主张。但这里有个三天的版本：把 ttl 和 sync 收进 <code>PutOptions</code>，后面加任何选项都不用再动调用点。要不要在这次改动里做掉？」</p>
+</div>
+
+<p>还有一个更常被忽略的中间档：<strong>把大重构拆成能独立落地的几步，这次只做第一步。</strong>比如你发现「过期时间」这个概念同时活在 <code>put</code>、磁盘格式、以及 GC 线程里——这就是一个横跨三处的知识。三天做不完，但你可以这次先把 <code>PutOptions</code> 立起来（只是接口层的一步），下次改 GC 时再把内部表示收进去。每一步单独看都是「战略的」，合起来就是那个大重构。</p>
+
+<p>另外别忘了书里那句组织层面的建议：每个开发团队都该规划出一小部分固定工时用于清理和重构。把它写进排期，而不是指望「等这波需求忙完」——那波需求永远不会完。</p>
+
+<h2><span class="num">16.5</span>注释先行：改代码之前先改契约</h2>
+
+<p>第 15 章讲过「<a class="gl" href="../reference/glossary.html#comments-first">注释优先</a><span class="en-inl">comments-first</span>」这个开发流程：先写<a class="gl" href="../reference/glossary.html#interface-comment">接口注释</a><span class="en-inl">interface comment</span>，再写实现。在<strong>修改</strong>既有代码时，这条流程的价值会翻倍，因为它顺手解决了本章最实际的一个问题——注释会随着代码改动而失效，而失效的注释比没有注释更糟：它让人不再相信所有注释。</p>
+
+<p>把「先改注释」当成改动的第一步，有三个具体收益：</p>
+
+<ol>
+  <li><strong>你会先看到全部约束。</strong>接口注释是这个模块唯一一处「所有调用方依赖什么」的完整陈述。把它读一遍再动手，比直接搜索调用点更可靠——搜索会漏掉那些通过函数指针或模板间接调用的地方。</li>
+  <li><strong>你会更早发现改动的真实规模。</strong>如果改完注释你发现要加三行「注意：当 X 时，返回值的含义会变成 Y」，那说明这次改动的真实成本不是三行代码，而是接口开始变浅。这时候停下来还来得及。</li>
+  <li><strong>注释会保持准确，因为它在你的视野里。</strong>书里关于位置的判断很实际：接口注释应该放在代码文件里、紧靠方法体，而不是放在 <code>.h</code> 里。</li>
+</ol>
+
+<div class="excerpt">
+<span class="src">第 16 章 · 让注释留在代码附近</span>
+<p>对于 C 和 C++ 这类把代码与头文件分开的语言，一种做法是把接口注释放在 <code>.h</code> 文件里方法声明的旁边。但它离代码太远了：开发者修改方法体时看不到这些注释，需要另外打开一个文件去找、去更新，这需要额外的工作。</p>
+<p>有人会说接口注释就该在头文件里，这样使用者不必看代码就能学会用一个抽象。但使用者本来就不该读代码或头文件——他们应该从 Doxygen 之类工具生成出来的文档里获取信息，很多 IDE 也会在输入方法名时把文档显示出来。<strong>既然如此，文档就应该放在对开发者写代码最方便的位置。</strong></p>
+</div>
+
+<p>这条建议会和你团队的既有习惯冲突（很多 C++ 项目把注释全放头文件）。这里的取舍很清楚：<strong>注释的第一使用者是改代码的人，不是读文档的人。</strong>如果你的工具链能从 <code>.cpp</code> 里抽取注释生成文档（Doxygen 完全可以），那就没有理由让它待在头文件里慢慢腐烂。</p>
+
+<p>剩下的几条维护规则，都是同一句话的推论——<strong>让注释待在它必然会被人看见的地方，并且只写一份</strong>：</p>
+
+<ul>
+  <li><strong>别把解释写进提交信息</strong>（<a class="gl" href="../reference/glossary.html#comments-belong-in-the-code-not-the-commit-log">注释属于代码不属于提交日志</a><span class="en-inl">comments belong in the code, not the commit log</span>）。一段「这里为什么必须加这个 fence」的推理，如果只活在 commit message 里，下一个人重构掉它时不会去翻 git log。信息放在代码里，提交信息里可以再留一份副本。</li>
+  <li><strong>别重复。</strong>同一个设计决策写两处，改的时候必然只改一处。宁可在一处写全，在另一处只留一句「见 xxx 处的注释」——引用失效时读者立刻会发现（找不到目标），而重复失效时读者根本不会发现。</li>
+  <li><strong>不要在 A 模块里解释 B 模块的行为。</strong>调用点上方那句「这里会顺带把 buffer 落盘」，一旦 B 的实现改了就是假信息。</li>
+  <li><strong>提交前扫一遍自己的 diff。</strong>三分钟，能抓到「注释没跟上」和「忘了删调试代码」。</li>
+</ul>
+
+<p>最后一条来自书里的一个洞察，它决定了注释能否长期存活：<strong>越抽象的注释越容易维护。</strong>「本函数把请求路由到负责该 key 的分片」不会因为分片算法从取模换成一致性哈希而失效；「用 key 的 CRC32 对 8 取模」明天就会过期。写注释时优先写前者，把后者留给代码。</p>
+
+<hr>
+
+<h2><span class="num">练习</span>这是战略改动还是战术补丁</h2>
+
+<p>五个真实风格的改动描述。判断它属于哪一种。注意：判断依据不是改动大小，而是<strong>它把新知识放在了哪里</strong>。</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>给 <code>RingBuffer::push</code> 加一个 <code>bool overwrite</code> 参数：满了就覆盖最老的一条。已有的 14 个调用点全部传 <code>false</code>。</p>
+    <div class="opts">
+      <button>战略改动</button>
+      <button data-ok="1">战术补丁</button>
+      <button>中性，看情况</button>
+    </div>
+    <p class="note">14 个调用点被牵动，全部传同一个值——这本身就是信号：那 14 处根本不关心这个参数。真正的信息是「有两种缓冲语义」，那就该是两个类型（<code>RingBuffer</code> / <code>OverwritingRingBuffer</code>）或一个构造时的策略，而不是每个调用点都要回答一次的问题。</p>
+  </div>
+
+  <div class="row">
+    <p>发现 <code>parse_header()</code> 和 <code>parse_body()</code> 各自实现了一遍 CRLF 跳过逻辑。把这段抽成 <code>skip_crlf()</code> 放进同一个文件，两边都调它。</p>
+    <div class="opts">
+      <button>战术补丁</button>
+      <button>纯属美容</button>
+      <button data-ok="1">战略改动</button>
+    </div>
+    <p class="note">这是第 5 章的<strong>后门泄漏</strong>被修掉：两个函数都懂「行结束符是什么」这条知识。抽成一处之后，改协议解析只动一个地方。它甚至没改变任何公开接口——最便宜的那种设计改进。</p>
+  </div>
+
+  <div class="row">
+    <p>一个函数返回 <code>std::pair&lt;std::string, bool&gt;</code>，新需求要再加一个 <code>size_t</code>。于是改成 <code>std::tuple&lt;std::string, bool, size_t&gt;</code>。</p>
+    <div class="opts">
+      <button data-ok="1">战术补丁</button>
+      <button>战略改动</button>
+      <button>中性，看情况</button>
+    </div>
+    <p class="note">调用点从 <code>.first/.second</code> 变成 <code>std::get&lt;2&gt;</code>——<strong>每个读者都必须回查声明才知道 <code>get&lt;2&gt;</code> 是什么</strong>。这正是第 18 章要讲的「通用容器使代码不明显」。改法：定义一个带名字字段的 <code>struct ParseResult</code>，三个字段各自可读。</p>
+  </div>
+
+  <div class="row">
+    <p>修一个越界 bug 时，顺手给这个模块的 <code>size_t len</code> 参数加了一条前置条件断言，并在注释里写清 <code>len</code> 不含结尾 NUL。</p>
+    <div class="opts">
+      <button>战术补丁</button>
+      <button>战略改动</button>
+      <button data-ok="1">战略改动，且最划算</button>
+    </div>
+    <p class="note">你已经在读这段代码、已经搞懂了它的约定——此刻补注释的边际成本接近零，收益是下一个人的认知负荷直接下降。这就是 16.3 那张表的核心：<strong>顺手改掉的东西，成本被这次改动摊掉了。</strong></p>
+  </div>
+
+  <div class="row">
+    <p>为了绕开一个加锁顺序问题，在调用处包了一层 <code>std::lock_guard</code>，并把原来的 <code>mutex</code> 改成 <code>recursive_mutex</code>，让重入不再死锁。</p>
+    <div class="opts">
+      <button>战略改动</button>
+      <button data-ok="1">战术补丁，且危险</button>
+      <button>中性，看情况</button>
+    </div>
+    <p class="note">把锁改成可重入，等于宣布「这个模块的加锁顺序不需要被理解」——它消掉了唯一的诊断信号，而不是消掉问题。这是「最小改动」最典型的恶性形态：<strong>它让系统看起来正常，同时把一条本该显式的约束藏进了无意识里。</strong>正确动作是找出那条顺序，把它写进接口注释，并用一个断言或分层锁去强制它。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>把补丁改写成方案</h2>
+
+<div class="recall">
+<p>有人在评审里提了这样一个改动：<code>Connection::send()</code> 现在遇到 EAGAIN 会直接返回错误。新需求要求「发送失败时自动重试两次」。作者的最小改动是在 <code>send()</code> 里加一个 <code>for (int i = 0; i &lt; 3; i++)</code> 包住 <code>::send()</code> 调用。</p>
+<p>用 16.2 的三个问题过一遍：这次改动让哪个模块多知道了什么？改完之后，这条知识活在接口里还是记忆里？有没有一个只贵一点点的版本？</p>
+<textarea placeholder="多知道的一件事是…… 它现在活在…… 我建议的版本是……"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p><strong>① 多知道的一件事：重试策略。</strong>而且它被放在了最底层。<code>send()</code> 从此隐含一条义务：它在返回之前会占用调用线程并可能重试。这条信息不在签名里，也不在返回值里。</p>
+<p><strong>② 它活在记忆里，而且有三个具体的坏后果：</strong></p>
+<ul>
+  <li><strong>上层无法感知延迟。</strong>一次 <code>send()</code> 现在可能阻塞三次 EAGAIN 的时间；调用方如果本来就在一个必须快速返回的事件循环里，它被无声地改变了行为。</li>
+  <li><strong>与 <code>sync</code>/超时机制打架。</strong>如果外层已经有一套超时，两层重试会叠乘，实际最坏延迟变成 3×N。</li>
+  <li><strong>重试粒度错了。</strong><code>::send()</code> 在部分写入后返回 EAGAIN，直接重试会把已发送的字节再发一遍——除非用 <code>send()</code> 的返回值推进偏移量，而这正是作者没写的那部分。</li>
+</ul>
+<p><strong>③ 只贵一点点的版本：把重试变成调用方可见的一个参数，或干脆不做。</strong></p>
+<pre><code>// conn.h
+struct SendResult {
+  size_t bytes_sent;   // 本次实际写入的字节数
+  int    err;          // 0 / EAGAIN / 其他 errno
+};
+
+// 只做一次写入尝试。返回 EAGAIN 表示内核缓冲已满，
+// 调用方应等待可写事件后从 bytes_sent 处继续。
+SendResult send_once(std::span&lt;const std::byte&gt; buf);</code></pre>
+<p>然后把「重试两次」放进调用方那层的一个小函数里，并给它一个超时预算。这样：接口里没藏行为，上层能算延迟，部分写入也被正确推进。改动量比「加个 for 循环」多十来行，但它把这条知识从三个人的记忆里挪进了两个函数的契约里。</p>
+<p>如果这个 <code>send()</code> 的调用点有二十个、而只有这一个需要重试——那就更该这么做。如果二十个都需要，那说明「重试」是这个模块的默认语义，应该改在模块内部并<strong>在接口注释里写明最坏阻塞时间</strong>。两种都可以是战略的；唯一不能接受的是「改了行为但没人告诉你」。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>一句话评审</h2>
+
+<div class="key">
+<p><strong>留评论时可以直接引：</strong>「这个改动让 <code>put()</code> 多知道了『过期时间』和『是否落盘』两件事，但它们现在只能靠调用点传第三个、第四个位置参数来表达——每个调用点都得回查签名，加第五个选项时还要再改一遍所有签名。建议收进一个 <code>PutOptions</code>（带默认值的结构体），这次改动的实际代码量不会增加，但后续加选项不用再动任何调用点。另外顺手把 <code>put()</code> 的接口注释补一下：<code>ttl_ms=0</code> 的语义、以及并发写同一 key 的可见性顺序，这两条目前只存在于实现里。」</p>
+</div>
+
+<p>凡是「加参数」的评审，都可以照这个骨架说：<strong>指出它让哪个模块多知道了什么 → 指出这份知识目前存在哪（位置参数 / 调用点 / 记忆）→ 给出一个成本相近的替代 → 顺手要求补齐契约。</strong>前三步让作者服气，第四步让这次改动在结束时不欠债。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch16.html">第 16 章 修改现有的代码（中文全译）</a> — 原文 16.2–16.6 全是关于「怎么让注释不腐烂」的具体技巧，本课只取了最可操作的几条；如果你团队正准备定注释规范，那几节值得整段读完。</p>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch03.html">第 3 章 工作代码是不够的</a> — 本章的「战略 vs 战术」直接沿用第 3 章的定义，投资心态那一节也在那里。没读过的话，先补那 8 分钟。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">把你最近一次「最小改动」的 diff 贴给我——不用挑，越随手越好。我们一起按 16.2 的三个问题过一遍：它让哪个模块多知道了什么？这份知识现在存在哪？如果答案是「在三个人的记忆里」，我们再找一个三天内能做完的版本。</p>
+
+  <div class="nav-links">
+    <span><a href="0015-write-comments-first.html">← L15 · 先写注释</a></span>
+    <span><a href="0017-consistency.html">L17 · 一致性 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L1 · 复杂性是唯一的敌人 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 1 章 · 课程 1 / 21</p>
+
+<h1>复杂性是唯一的敌人</h1>
+<p class="standfirst">软件设计没有物理定律兜底。唯一的硬限制是「人能不能理解自己造的东西」——所以整本书只有一个目标：降低复杂性。</p>
+
+<h2><span class="num">1.1</span>为什么是复杂性，而不是别的</h2>
+
+<p>Ousterhout 的开场很直接：写软件是「人类历史上最纯粹的创作活动之一」，程序员不受物理定律约束。这句话的推论才是重点——</p>
+
+<blockquote>
+<p>这意味着编写软件的最大限制是我们了解所创建系统的能力。随着程序的发展和获得更多功能，它变得复杂……随着时间的推移，复杂性不断累积，程序员在修改系统时将所有相关因素牢记在心中变得越来越难。</p>
+<cite>第 1 章</cite>
+</blockquote>
+
+<div class="excerpt">
+<span class="src">第 1 章 · 复杂性的来源</span>
+<p>写软件最大的限制，是我们理解自己所造系统的能力。程序变大、功能变多，组件之间就会出现微妙的依赖；复杂性随时间累积，开发者修改系统时越来越难把所有相关因素同时装进脑子。好的工具能帮我们应付一部分，但仅靠工具，能做的也就那么多。想要更便宜地造出更强的系统，只能让软件本身更简单。</p>
+</div>
+
+<p>这不是修辞。落到一个真实的 C 项目里，它长这样：你要改 <code>ring buffer</code> 的溢出策略，先读 <code>ring.c</code>；然后发现 <code>net.c</code> 里有一份拷贝；再发现 <code>log.c</code> 里还有第三份，而且三份对 <code>head</code> / <code>tail</code> 的不变式假设略有不同。你花了两小时改完，仍然不确定有没有漏掉第四份。</p>
+
+<p>这就是本书最想让你戒掉的东西，也是大多数工程师的第一个真实痛点：<strong>改一个需求要动好几处，怕漏</strong>。怕漏的根源不是粗心，而是同一个设计决策被抄进了多个地方——第 2 章给它起名叫<strong>变更放大（change amplification）</strong>，第 5 章会告诉你它真正的名字叫<strong>信息泄漏（information leakage）</strong>。整本书的路线图，本质上就是围着这一件事转。</p>
+
+<h2><span class="num">1.2</span>只有两条路</h2>
+
+<p>全书所有技巧，最终都归到这两条：</p>
+
+<div class="grid2">
+  <div class="card">
+    <h4>一 · 消除</h4>
+    <p>让代码更简单、更显而易见。典型手段：消掉特殊情况、一致地使用命名。</p>
+  </div>
+  <div class="card">
+    <h4>二 · 封装</h4>
+    <p>把复杂性关进模块里，让人一次只需面对一小部分。这就是模块化设计。</p>
+  </div>
+</div>
+
+<p>在 C/C++ 里，「消除」有几种非常具体的形态，值得先认出来：</p>
+
+<ul>
+  <li><strong>消掉特殊情况。</strong>不用「这个函数返回 0 表示成功、那个返回 -1、第三个返回 errno」，统一成 <code>int</code> + <code>errno</code>，或者 C++ 的 <code>std::expected&lt;T, errno_t&gt;</code>。特殊情况越少，读代码时要装的规则越少。</li>
+  <li><strong>统一出口。</strong>C 里满天飞的 <code>if (err) { free(a); close(fd); return -1; }</code> 是典型的「同一件事写 N 遍」。一个 <code>goto cleanup</code> 把它收成一处，错误路径就只有一条。</li>
+  <li><strong>消除状态。</strong>能不缓存就不缓存。一个 <code>static</code> 变量省下的那行参数传递，会在并发、重入和测试里连本带利还回来。</li>
+</ul>
+
+<p>「封装」在后面的章节会展开成<strong>深模块（deep module）</strong>：接口窄、实现厚。比如 <code>struct arena</code> 对外只有 <code>arena_new / arena_alloc / arena_reset</code>，内部是 <code>mmap</code> 还是 <code>malloc</code> + 空闲链表，调用方根本不需要知道。换掉实现，调用方一行不改。</p>
+
+<p>记住这个二分，它是全书的地图：第 4–7 章讲「怎么封装得好」，第 8–18 章大半讲「怎么消除」。</p>
+
+<h2><span class="num">1.3</span>设计永不完成</h2>
+
+<p>物理系统（桥、船）的设计集中在开工前；软件不是。因为软件<strong>足够可塑</strong>，中途大改是可行的——桥梁施工到一半改塔架数量不现实，软件改架构却很常见。这一点对底层读者尤其明显：固件和内核驱动天天在证明它。你在纸上算好了 DMA 对齐、cache line 布局、中断上下文的锁顺序，上板第一天全部推翻，因为真实硬件的时序和文档写的不一样。</p>
+
+<p>于是有了对瀑布模型的判决：</p>
+
+<ul>
+  <li>软件本质上比物理系统复杂，<strong>动手前不可能想清全部后果</strong>；</li>
+  <li>问题往往到实现阶段才暴露，而瀑布模型的结构容不下此时的大改；</li>
+  <li>于是开发者绕着问题打补丁、不动整体设计 → <em>复杂性爆炸</em>。</li>
+</ul>
+
+<div class="excerpt">
+<span class="src">第 1 章 · 瀑布模型与增量开发</span>
+<p>瀑布模型很少适用于软件。在构建任何东西之前，不可能把大型软件系统的设计充分具象化到看清它的全部含义，所以初始设计必然带着许多问题；而问题往往要到实现顺利推进之后才变得明显。那时瀑布的结构已经无法容纳重大设计变更，开发者只能在不改整体设计的前提下绕开问题，复杂性由此爆炸式增长。</p>
+</div>
+
+<p>作者的替代方案是增量：先做一个能跑通的小子集，设计、实现、评估它，在系统还小的时候就把初始设计的问题修掉；再加下一批功能。每一轮迭代都会暴露上一轮设计的毛病，而修它的成本还很低。</p>
+
+<div class="key">
+<p><strong>结论：</strong>设计是一个贯穿整个生命周期的连续过程。你应当始终在找改进设计的机会，并且<strong>预先安排</strong>一部分时间做设计改进——而不是等有空。</p>
+</div>
+
+<h2><span class="num">1.4</span>本书怎么用</h2>
+
+<p>作者自己承认原则抽象、难懂，给了三条使用说明，值得照做：</p>
+
+<table>
+  <thead><tr><th>做法</th><th>为什么</th></tr></thead>
+  <tbody>
+    <tr><td>配合代码评审读</td><td>在别人的代码里看设计问题，比看自己的容易得多</td></tr>
+    <tr><td>盯「危险信号」</td><td>看到红旗就停下来找替代设计；试过的替代方案越多，学到的越多</td></tr>
+    <tr><td>用节制</td><td>每条规则都有例外，推到极端就变成坏设计（本书有「走得太远」小节专门讲）</td></tr>
+  </tbody>
+</table>
+
+<p>第二条值得多花一句：本书真正的产出不是一套教条，而是一份<strong>可命名的红旗清单</strong>。这正是第二个痛点的解药——评审时你说不出「这里不太好」的所以然，往往是因为你只有直觉、没有词汇。等你手上有了「变更放大」「后门泄漏」「时间分解」「浅方法」这些名字，评审意见就能从「感觉不太对」变成一条别人无法反驳的具体指控。</p>
+
+<div class="excerpt">
+<span class="src">第 1 章 · 适用范围</span>
+<p>本书几乎所有例子都用 Java 或 C++ 写成，大部分讨论也是围绕面向对象语言里的类设计。但这些想法适用于其他领域：几乎所有与方法有关的思想，也可以用在没有面向对象特性的语言中的函数上，比如 C；设计思想同样适用于类之外的模块，例如子系统或网络服务。</p>
+</div>
+
+<p>所以读者不必因为「我不写类」而觉得隔了一层。一个 <code>.c</code> 加一个头文件，就是一个模块；一组只通过 <code>ioctl</code> 交互的内核组件，也是模块。<strong>接口 / 实现</strong>这条分界线跟语言无关，跟「谁能看见什么」有关。</p>
+
+<h2><span class="num">1.5</span>复杂性在 C/C++ 项目里的常见面孔</h2>
+
+<p>抽象的定义容易点头，具体到工程里却常常认不出来。下面这四种形态，你在任何一个五年以上的 C 仓库里都能找到：</p>
+
+<div class="grid2">
+  <div class="card">
+    <h4>被复制的常量</h4>
+    <p>缓冲区大小、最大连接数、超时毫秒数，以字面量形式散落在多个翻译单元。改一个数字要全局搜索，而搜索不到的地方就是未来的 bug。</p>
+  </div>
+  <div class="card">
+    <h4>被复制的协议理解</h4>
+    <p>发送端和接收端各写一遍报文布局。加一个字段要改两处，且顺序、对齐、字节序必须手工保持一致。</p>
+  </div>
+  <div class="card">
+    <h4>隐形的全局状态</h4>
+    <p><code>static</code> 缓冲区、全局错误标志、单例式的 <code>g_ctx</code>。它让任何一次调用都依赖「之前发生过什么」。</p>
+  </div>
+  <div class="card">
+    <h4>没有文档的非正式接口</h4>
+    <p>「调用 <code>init</code> 之前必须先 <code>attach</code>」「这个 fd 不能在两个线程里同时用」——只在某个人脑子里。</p>
+  </div>
+</div>
+
+<p>四种形态对应后面四章的不同刀口：第一种和第二种是信息泄漏（第 5 章），第三种是依赖（第 2 章），第四种是接口的非正式部分没写下来（第 4 章）。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>/* net.c */
+static struct conn g_conns[256];
+
+/* epoll_loop.c */
+struct conn conns[256];
+for (int i = 0; i &lt; 256; i++) ...
+
+/* stats.c */
+for (int i = 0; i &lt; 256; i++) sum += g_conns[i].bytes;</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>数字 <code>256</code> 不是魔法常数，它是一个设计决策——「同时最多接受多少连接」。这个决策被复制进了三个翻译单元，编译器没有任何办法保证它们一致。某天有人为了压测只把 <code>epoll_loop.c</code> 改成 1024，程序不会报错，只会在第 257 个连接上出现一个谁都没预料到的行为差异。</p>
+<p>而且 <code>g_conns</code> 是 <code>static</code> 的：<code>stats.c</code> 里那份循环操作的是自己的一份副本，统计数字永远是零。这类 bug 不会崩，只会安静地错。</p>
+</div>
+</div>
+<p>改法：把「连接表」整体做成一个模块，容量是它内部的事。<code>conn_pool.h</code> 只导出 <code>conn_pool_new(cap)</code> / <code>conn_pool_acquire()</code> / <code>conn_pool_release()</code> / <code>conn_pool_foreach()</code>；容量问 <code>conn_pool_capacity(pool)</code>，永远不写字面量。改上限时只改一处，且改错了编译不过——这才是可以依赖的约束。</p>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>你现在在哪条路上？</h2>
+
+<p>这不是知识题，是自检。凭直觉点，不要想「应该选哪个」。</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>「先让它跑起来，能上线就行，回头再清理。」</p>
+    <div class="opts">
+      <button data-ok="1">战术编程</button>
+      <button>战略编程</button>
+    </div>
+    <p class="note">这是第 3 章「战术编程」的原话思路。作者的态度不是批评你赶工期，而是指出：这句话在<em>每一个</em>任务上都成立，于是复杂性以每次一点点的方式累积。</p>
+  </div>
+
+  <div class="row">
+    <p>「这个新模块我先花 20 分钟试两种接口写法，取更简洁的那个。」</p>
+    <div class="opts">
+      <button>战术编程</button>
+      <button data-ok="1">战略编程</button>
+    </div>
+    <p class="note">典型的<strong>主动投资</strong>：不是实现第一个想到的方案，而是试几个替代设计再选。第 3 章建议把总开发时间的 10–20% 投在这类事上。</p>
+  </div>
+
+  <div class="row">
+    <p>「现在太忙了，等这个季度结束我再统一重构。」</p>
+    <div class="opts">
+      <button data-ok="1">战术滑坡</button>
+      <button>合理排期</button>
+    </div>
+    <p class="note">第 3 章点名这是滑坡效应：拖延一旦开始，几乎必然再拖一次。你等待越久，问题越大、方案越可怕，于是更容易继续拖。</p>
+  </div>
+
+  <div class="row">
+    <p>「系统很大，功能很复杂，所以它一定复杂。」</p>
+    <div class="opts">
+      <button>符合本书定义</button>
+      <button data-ok="1">混淆了规模与复杂性</button>
+    </div>
+    <p class="note">本书的复杂性是<strong>开发者视角</strong>的：难以理解和修改才叫复杂。大而好用不算复杂；小而难改照样复杂。这条在第 2 章会展开。</p>
+  </div>
+</div>
+
+<div class="key">
+<p><strong>可以贴进 code review 的原话：</strong>「这个改动需要在几个文件里同步修改？如果不止一处，说明同一个知识被复制了——请把它收进一个模块，让编译器替我们保证一致性。」</p>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>接下来</h2>
+
+<p>第 1 章只给了方向，没给尺子。下一课是全书最实用的一章：<strong>怎么判断一段代码是不是复杂</strong>——三个症状，两个成因。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch01.html">第 1 章 介绍（中文全译）</a> — 约 15 分钟读完，本课只取了骨架，原文关于「增量开发」的论证更完整。<br>
+  版本差异看 <a href="https://web.stanford.edu/~ouster/cgi-bin/book.php">作者官方书页</a>。<br>
+  前五章的浓缩版留在 <a href="../reference/ch1-5-cheatsheet.html">一页速查</a>，复习时看那张表比重读本文快。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">卡住、不同意、或者想把这套东西套到你手上的真实代码上——直接问。我是你的老师，不是这本书的朗读器。比如：「我这个 300 行的 service 类算不算浅？」把签名贴过来，我们一起按第 4 章的尺子量。</p>
+
+  <div class="nav-links">
+    <span><a href="../index.html">← 课程目录</a></span>
+    <span><a href="0002-symptoms-of-complexity.html">L2 · 复杂性的症状 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L12 · 为什么要写注释（四个理由） — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 12 章 · 课程 12 / 21</p>
+
+<h1>为什么要写注释：四个理由</h1>
+<p class="standfirst">「好代码自解释」是本章要拆掉的第一个借口。理由不是审美，是结构性的：没有注释你就没有抽象，没有抽象就藏不住复杂性——而藏不住复杂性，就意味着每次改动都得靠猜。</p>
+
+<h2><span class="num">12.1</span>先把四个借口摆出来</h2>
+
+<p>书里把工程师不写注释的理由列成四条，然后逐条驳。这四条你大概都说过或听过：</p>
+
+<table>
+  <thead><tr><th>借口</th><th>它的真实成分</th><th>为什么站不住</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>「好的代码是自解释的」</td>
+      <td>对：好名字能减少注释需求</td>
+      <td>错在「全部」——接口的非正式契约、设计理由、调用前提，代码里根本没有位置表达</td>
+    </tr>
+    <tr>
+      <td>「我没时间」</td>
+      <td>对：项目永远在赶</td>
+      <td>算过账：写注释不超过开发时间的 10%（见 12.3）</td>
+    </tr>
+    <tr>
+      <td>「注释会过时，反而误导」</td>
+      <td>对：确实会过时</td>
+      <td>大改才需要大改文档，而代码改动本身更贵；靠 code review 就能抓住陈旧注释</td>
+    </tr>
+    <tr>
+      <td>「我见过的注释都没用」</td>
+      <td>最有价值的一条</td>
+      <td>问题在写法，不在注释本身——第 13 章整章解决它</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>第三条被作者称为「最有价值的借口」，因为它是唯一<strong>基于真实经验</strong>的。你确实见过满屏 <code>// i++</code>。所以本章的重点不是让你相信注释好，而是让你相信<strong>你见过的那些坏注释有一个可诊断的病因</strong>：它们和代码处在同一个详细程度，所以什么信息也没增加。这个病第 13 章治。</p>
+
+<h2><span class="num">12.2</span>理由一：抽象只能靠注释存在</h2>
+
+<p>这是四个理由里最硬的一个，也是本章真正的地基。原文：</p>
+
+<div class="excerpt">
+<span class="src">第 12 章 · 注释是抽象的基础</span>
+<p>注释是抽象的基础。抽象的目的是隐藏复杂性：抽象是实体的概览，它保留必要的信息，但忽略可以放心忽略的细节。如果使用者必须阅读方法的代码才能用它，那就没有任何抽象可言——方法的所有复杂性都暴露在外。没有注释时，一个方法的全部抽象就是它的声明：名字，以及参数和结果的名称与类型。这个声明缺少太多基本信息，无法单独构成有用的抽象。</p>
+<p>例如，一个提取子串的方法可能有两个参数 <code>start</code> 和 <code>end</code>，表示要提取的字符范围。仅凭声明，无法确定提取的子串是否包含 <code>end</code> 指向的字符，也无法确定 <code>start &gt; end</code> 时会发生什么。注释让我们捕获调用者需要的其他信息，从而在隐藏实现细节的同时完成这个简化视图。</p>
+</div>
+
+<p>拿你自己的代码验一下这句话。这里有三个真实世界里天天出现的声明，你看得出它们的契约吗？</p>
+
+<pre><code>// C
+ssize_t read(int fd, void* buf, size_t count);
+
+// C++
+void reserve(size_t n);
+
+// Rust
+fn as_slice(&amp;self) -&gt; &amp;[u8];</code></pre>
+
+<p>第一个：<code>count</code> 是字节还是元素？返回 0 是 EOF 还是「读到了 0 字节」？被信号打断返回 -1 且 <code>errno == EINTR</code> 时，已读的部分丢了吗？——这些全都不在签名里，全部在 man page 里。<strong>man page 就是接口注释</strong>，只不过它住在另一个仓库里。</p>
+
+<p>第二个：<code>reserve</code> 会让迭代器失效吗？<code>n</code> 小于现有 <code>capacity</code> 时会缩小吗？异常时保证是什么？——标准规定这些，而标准文档是注释的另一个居所。</p>
+
+<p>第三个看起来最简单，但：返回的切片长度是「已写入」还是「已分配」？如果内部是 <code>Vec&lt;u8&gt;</code> 且用了 <code>unsafe</code> 初始化，未写入区间的内容是什么？</p>
+
+<div class="key">
+<p>检验抽象是否存在的快捷方式：<strong>删掉这个函数的所有调用方，只看签名 + 注释，你能不能不读函数体就正确使用它？</strong>能，抽象存在。不能，那么这个「模块」其实没有接口，只有一段你必须读完的实现——不管它被包在多少层 class 里。</p>
+</div>
+
+<p>这条判据直接对上痛点③「模块拆得不对，越拆越乱」：你拆出来的每一层，如果使用它都必须读它的实现，那这一层没有增加任何抽象，只增加了<strong>跳转次数</strong>。这就是「越拆越乱」的机制——不是拆得太多，是拆出来的层没有配套的抽象说明，于是读者被迫下钻。</p>
+
+<h2><span class="num">12.3</span>理由二：不写注释的代价是认知负荷和未知的未知</h2>
+
+<p>第 2 章说复杂性有三种症状。书里明确说：好的文档能解决其中两种。</p>
+
+<table>
+  <thead><tr><th>症状</th><th>注释怎么缓解它</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>认知负荷</strong></td>
+      <td>给出「改这个需要知道的信息」，并让不相关的信息可以被安全忽略。没有文档，你得读大量代码去重建设计者的想法</td>
+    </tr>
+    <tr>
+      <td><strong>未知的未知</strong></td>
+      <td>澄清系统结构，让「这个改动牵涉哪些代码和信息」变得可见。没有它，你不知道自己不知道什么</td>
+    </tr>
+    <tr>
+      <td>变更放大</td>
+      <td><em>不能</em>。这是结构问题，注释治不了——但注释能把它标出来（第 13 章的跨模块注释）</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>注意第三行。承认注释治不了变更放大，这一点很重要——它挡住了「多写注释就行了」这种万金油答案。如果你的问题是一改要动五处，注释只能让你<strong>知道</strong>要动五处，不能让它变成一处。那要靠第 5 章的信息隐藏。</p>
+
+<div class="excerpt">
+<span class="src">第 12 章 · 关于「没时间」的成本核算</span>
+<p>写注释不需要花很多时间。问问自己：不含注释，你花在写代码上的时间占开发总时间多少（相比设计、编译、测试）？我怀疑不超过 10%。再假设你花在写注释上的时间和写代码一样多——这应该是个安全的上限。基于这两个假设，写好注释给你的开发时间增加不超过约 10%。而良好文档带来的好处会迅速抵消这个成本。</p>
+<p>此外，很多最重要的注释都与抽象有关，例如类和方法的顶层文档。第 15 章会论证：这些注释应当作为设计过程的一部分来写，而写文档这个动作本身就是改进整体设计的重要工具。这类注释的回报是立刻兑现的。</p>
+</div>
+
+<p>把这两个假设换成你的数字：如果写代码占你 30% 的时间（因为你在写 C++，编译和调试很贵），那 30% × 10% = 3%。3% 的开发时间换「半年后你还知道这段为什么这么写」——这个交易在任何项目里都不需要讨论。</p>
+
+<h2><span class="num">12.4</span>理由三：不写注释会把实现推向浅</h2>
+
+<p>这一条最反直觉，也最有用。书里描述了一条因果链，值得逐句看：</p>
+
+<ol>
+  <li>如果读者被期望「读代码来理解行为」，那么作者会努力让每个方法都短到能一眼读完。</li>
+  <li>为了让它短，就把做实事的方法<strong>拆成几个更小的方法</strong>。</li>
+  <li>结果：大量浅方法（第 4 章的类炎）。</li>
+  <li>而且这并没有真的让代码更好读——要理解顶层方法的行为，读者仍然得理解它调用的每个嵌套方法。</li>
+</ol>
+
+<p>这条链在 C/C++ 里有个本地化版本，你一定见过：</p>
+
+<pre><code>static inline uint32_t get_len(const header_t* h) { return h-&gt;len; }
+static inline uint32_t get_flags(const header_t* h) { return h-&gt;flags; }
+static inline void set_len(header_t* h, uint32_t v) { h-&gt;len = v; }
+static inline bool is_compressed(const header_t* h) { return h-&gt;flags &amp; F_COMPRESSED; }</code></pre>
+
+<p>四个函数，零个注释，因为它们「足够短，自解释」。可是<strong>真正需要解释的东西一个都没出现</strong>：<code>len</code> 是 payload 长度还是含头长度？<code>flags</code> 的位序是谁定的？<code>F_COMPRESSED</code> 与 <code>F_ENCRYPTED</code> 能同时置位吗？<code>set_len</code> 会自动更新校验和吗？</p>
+
+<p>这就是「自解释」的陷阱：<strong>短函数让人误以为不需要解释，而它们恰恰是最需要解释的地方——因为所有语义都藏在别处。</strong></p>
+
+<h2><span class="num">12.5</span>理由四：作者本人也需要</h2>
+
+<blockquote>
+<p>没有文档，后来的开发者不得不重新推导或猜测原作者的知识。这会多花时间，而且如果新开发者误解了原设计意图，就有引入错误的风险。即使是原作者，在修改代码时注释也是有价值的：如果你已经几周没碰过这段代码，你会忘掉最初设计的许多细节。</p>
+<cite>第 12 章 · 注释带来的收益</cite>
+</blockquote>
+
+<p>这条不用论证。「三周前的你」和「一个陌生人」在信息上差别不大，只是前者不好意思问问题。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div>
+<b>这样写</b>
+<pre><code>// 把数据写到磁盘
+int flush(buf_t* b) {
+    if (b-&gt;dirty_len == 0) return 0;
+    ssize_t n = pwrite(b-&gt;fd, b-&gt;data,
+                       b-&gt;dirty_len, b-&gt;base_off);
+    if (n &lt; 0) return -1;
+    b-&gt;base_off  += n;
+    b-&gt;dirty_len -= n;
+    return 0;
+}</code></pre>
+</div>
+<div>
+<b>为什么烂</b>
+<p>注释和函数名说同一件事，信息量为零——典型的「与代码同层」注释（第 13 章的病因）。而真正的坑一个都没写：</p>
+<p>① 部分写时只前进了 <code>n</code>，调用方<strong>必须再调一次</strong>，返回 0 不代表写完了；② <code>b-&gt;data</code> 的哪一段是脏的？是 <code>[0, dirty_len)</code> 还是从某个偏移开始？代码看不出；③ <code>pwrite</code> 失败后 <code>base_off</code>/<code>dirty_len</code> 没动，但已经写下去的那部分<strong>不会回滚</strong>，重试是安全的吗？取决于文件是否要求幂等；④ 没有 <code>fsync</code>，落到磁盘的是页缓存，掉电就没了——但函数叫 <code>flush</code>。</p>
+<p>这四条里，任何一条被下一个人猜错，都是一次数据丢失级别的 bug。</p>
+</div>
+</div>
+<p>改法：让注释回答「调用方必须知道但代码说不出的事」，并且按第 13 章的分类分别放在接口注释与实现注释里：</p>
+<pre><code>/**
+ * 把 buf 中已累积的脏字节尽量写入底层文件描述符。
+ *
+ * \param b  缓冲区；b-&gt;dirty_len 是自 data 起始处起的脏字节数。
+ * \return   &gt;=0：本次写入的字节数，可能小于 b-&gt;dirty_len
+ *           （部分写）。返回 0 表示无需写入。
+ *           &lt;0：errno 有效；已写入的字节不会回滚，
+ *           但 base_off/dirty_len 保持一致，可安全重试。
+ *
+ * \note 不保证持久化：本函数只到页缓存。要落盘，调用 fsync()。
+ * \note 非线程安全：调用方需保证同一 buf 上不并发 flush。
+ */
+int flush(buf_t* b);</code></pre>
+<p>注意改法里没有一句话在解释「怎么实现的」。它只写：脏区间的定义、部分写的语义、失败后可重试、以及一个容易被名字骗到的边界（不落盘）。<strong>这四条恰好就是新人最容易踩的四个坑。</strong></p>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>四个借口，哪个在起作用</h2>
+
+<p>四个评审场景。判断说话人真正卡在哪一条上（这决定了你该怎么回）。</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>作者说：「这个函数 <code>rehash(uint32_t seed)</code> 一眼就懂，不用注释。」</p>
+    <div class="opts">
+      <button data-ok="1">借口一：自解释</button>
+      <button>借口二：没时间</button>
+      <button>借口三：会过时</button>
+    </div>
+    <p class="note">签名只说「重新哈希」，没说：seed 变了之后，已有元素的桶位置会全部变化吗？调用方持有迭代器/指针还有效吗？这是抽象缺失，不是风格问题。回法：给出一个真实的调用场景，问他「这里要不要重新取指针」——他自己会承认签名答不了。</p>
+  </div>
+
+  <div class="row">
+    <p>作者说：「等接口稳定了我一次性补注释，现在还在改。」</p>
+    <div class="opts">
+      <button>借口四：注释没用</button>
+      <button data-ok="1">借口二/三：拖延 + 怕过时</button>
+      <button>借口一：自解释</button>
+    </div>
+    <p class="note">这条最难驳，因为听起来合理。真正的反驳不是「注释很重要」，而是第 15 章的机制：<strong>先写接口注释是设计手段</strong>，写得出来才说明抽象清楚。「等稳定」通常等价于「永远不写」，因为永远有更高优先级的事。</p>
+  </div>
+
+  <div class="row">
+    <p>作者说：「我上次写的注释被人说没用，所以我干脆不写了。」</p>
+    <div class="opts">
+      <button>借口一：自解释</button>
+      <button>借口三：会过时</button>
+      <button data-ok="1">借口四：注释无用论</button>
+    </div>
+    <p class="note">这是最有价值的一条，因为它的经验是真的。别安慰他「注释还是好的」，直接给病因：他写的注释和代码处在同一详细程度。让他把一条注释删掉，用一句话回答「读者读到这里会误解什么」——通常他立刻就写出了一条好注释。</p>
+  </div>
+
+  <div class="row">
+    <p>一个 <code>mmap</code> 封装的注释写着：「<em>v1 时用 read() 循环，v2 改成 mmap；保留旧路径是为了 AArch64 上的 4K 页对齐问题，见 #4821。</em>」评审说这条会过时，建议删。</p>
+    <div class="opts">
+      <button data-ok="1">不该删，这是理由型注释</button>
+      <button>该删，代码里已有旧路径</button>
+      <button>该删，链接到 issue 就够了</button>
+    </div>
+    <p class="note">这条注释的价值恰恰在于它记录了<strong>代码里看不出的历史约束</strong>——为什么旧路径还在。所谓「会过时」指的是<strong>与实现同步的细节</strong>会漂移；而设计理由不会过时，删除它的代价是下一个人把旧路径当垃圾清理掉，然后在 AArch64 上翻车。正确做法是保留理由、指向 issue 拿细节，而不是只留链接（链接会 404，理由不会）。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>用一句话说清「为什么必须写」</h2>
+
+<div class="recall">
+<p>假设你要说服一个明确反对写注释的资深同事，只有 30 秒。不许引用「最佳实践」「可维护性」这类词。写你的 30 秒版本。</p>
+<p class="hint-inline">提示：从第 12 章的四个理由里挑<strong>一个</strong>，配一个他代码里的真实例子。挑「抽象」那条最有杀伤力，因为它是结构性的、不可辩驳的。</p>
+<textarea placeholder="30 秒版本：…"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p>可以这样说：</p>
+<p>「你说的『自解释』我同意一半——名字确实能省掉一部分注释。但有一类信息代码里根本没有位置放：这个函数的<strong>契约</strong>。比如你这个 <code>decode(buf, len, out)</code>，签名没告诉我 <code>out</code> 要多大、<code>len</code> 是含头还是不含、失败时 <code>out</code> 里是不是垃圾。我现在要么读你 80 行实现，要么赌一把。<strong>赌错就是越界写。</strong></p>
+<p>我不是要你写『把数据解码』这种废话。我是要这四条契约。有了它，这个函数才成为一个『模块』——否则它只是一段我必须读完的代码，外面套了个函数壳。」</p>
+
+<p>注意这个版本做了三件事：① 承认对方对的部分（不硬碰）；② 把问题从「风格」移到「结构性缺失」；③ 用具体的安全后果（越界写）锚定。<strong>这三步比任何原则宣言都有效</strong>，因为它说的不是「你应该」，而是「我现在没法安全地用你的代码」。</p>
+
+<p>一个补充判断：如果对方回「那你读实现啊」——这恰恰证实了 12.2 那条判据，他这个函数<strong>没有抽象</strong>。你可以直接把这个结论说出来，它不是攻击，是第 4 章的术语。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>往下走</h2>
+
+<p>这一章只证明「要写」，没教「怎么写」。你自己也见过大量无用的注释——下一章处理它。第 13 章会给你一条判据（<strong>把注释读一遍，问：没看过这段代码的人能不能写出同样的话？</strong>），一个分类法（接口 / 数据结构成员 / 实现 / 跨模块），以及本章末尾那句最实用的提醒：<em>如果写注释很难，那不是注释的问题，是设计的问题。</em></p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch12.html">第 12 章 为什么要写注释（中文全译）</a> — 原文对四个借口的驳斥比这里更啰嗦，但 12.2 引的那两段关于抽象的论证值得逐字读一遍。</p>
+  <p><a href="https://web.stanford.edu/~ouster/cgi-bin/book.php">作者官方书页</a> — 作者在这本书的序里专门回应了「注释 = 额外工作」这种看法，第二版还加了关于文档与 AI 生成代码的讨论，值得对照。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">挑你项目里<strong>最让你不爽的一个函数签名</strong>贴过来（只要签名和它现在那句注释）。我帮你列出「调用方必须知道、但签名和现有注释都没说」的信息清单——那份清单就是它该有的接口注释。通常不超过五条。</p>
+
+  <div class="nav-links">
+    <span><a href="0011-design-it-twice.html">← L11 · 设计两次</a></span>
+    <span><a href="0013-comments-describe-nonobvious.html">L13 · 注释应描述不明显的内容 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

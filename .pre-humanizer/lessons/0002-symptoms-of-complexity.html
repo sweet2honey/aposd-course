@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L2 · 复杂性的症状与成因 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 2 章 · 课程 2 / 21</p>
+
+<h1>复杂性的症状与成因</h1>
+<p class="standfirst">第 1 章给了方向，这一章给尺子：复杂性有三个可观察的症状，两个可切除的成因。</p>
+
+<h2><span class="num">2.1</span>定义：实用性优先</h2>
+
+<blockquote>
+<p>复杂性是任何使系统难以理解和修改的东西。</p>
+<cite>第 2 章</cite>
+</blockquote>
+
+<p>这个定义有三个刻意的选择：</p>
+
+<ul>
+  <li><strong>与规模无关。</strong>小系统也可以很复杂，大系统也可以很清晰。</li>
+  <li><strong>与功能无关。</strong>功能少不等于简单。</li>
+  <li><strong>是开发者的体验，不是代码的属性。</strong>它随时间、随人变化。</li>
+</ul>
+
+<div class="excerpt">
+<span class="src">第 2 章 · 什么是复杂性</span>
+<p>复杂性是开发者在某个时间点、试图完成某个具体目标时感受到的东西，它不必与系统的整体规模或功能挂钩。人们常用「复杂」描述功能繁多的大型系统，但只要这样的系统容易使用，按本书的定义它就不复杂。反过来，小而简单的系统也可能非常复杂。如果一个软件系统难以理解和修改，它就是复杂的；如果容易理解和修改，它就是简单的。</p>
+</div>
+
+<p>作者还给了一个粗略的加权公式：<code>C = Σ cp × tp</code>——每个部分的复杂程度，乘以开发者花在它上面的时间。含义是：<em>没人碰的复杂代码，代价小；天天改的复杂代码，代价大。</em></p>
+
+<div class="excerpt">
+<span class="src">第 2 章 · 用加权看待复杂性</span>
+<p>复杂性取决于最常发生的活动。如果系统里有几块极其复杂的部分，但几乎没人需要碰它们，那它们对整体复杂性影响不大。粗略地用数学刻画：系统的总体复杂度 C，等于每个部分的复杂度 cp 乘以开发者花在该部分上的时间 tp 的加权和。把复杂性隔离在一个永远不会被看到的地方，几乎和彻底消除它一样好。</p>
+</div>
+
+<p>这条对底层代码格外重要。一个 80 行的 SIMD 快路径，如果三年只改过一次，它的「cp」很高但「tp」约等于零，不值得为它牺牲可读性去炫技。反过来，那个被每个 <code>.c</code> 文件 <code>#include</code> 的头文件，哪怕只多了一个语义含糊的宏，它的 <code>tp</code> 是全体工程师的全部工时——那个才要盯。</p>
+
+<div class="key">
+<p><strong>判定权的转移：</strong>复杂与否，由<strong>读者</strong>判定而非作者。如果你觉得一段代码难以理解，那它就是复杂的——作者说「这很简单」不构成反驳。这条规矩在代码评审里极其好用。</p>
+</div>
+
+<p>作者把这个判定权讲得很明确：对自己写的代码觉得简单，别人觉得复杂，那么它就是复杂的；这时候该做的是去问对方为什么觉得复杂，因为「你的视角」和「他的视角」之间的差距里，往往藏着有价值的东西。开发者的职责不只是写出自己能轻松使用的代码，还要写出<strong>别人也能轻松使用</strong>的代码。</p>
+
+<h2><span class="num">2.2</span>三个症状</h2>
+
+<table>
+  <thead><tr><th>症状</th><th>你会看到什么</th><th>书里的例子</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>变更放大</strong><br><span class="term">change amplification</span></td>
+      <td>一个看起来简单的改动，要在很多地方重复修改</td>
+      <td>网站 banner 背景色：每个页面硬编码 → 改成中心变量 <code>bannerBg</code> 后只需一处</td>
+    </tr>
+    <tr>
+      <td><strong>认知负荷</strong><br><span class="term">cognitive load</span></td>
+      <td>完成一个任务，需要先知道多少东西</td>
+      <td>C 里 <code>allocate</code> 之后必须由调用者 <code>free</code>——你写一行代码也得记住整条生命周期规则</td>
+    </tr>
+    <tr>
+      <td><strong>未知的未知</strong><br><span class="term">unknown unknowns</span></td>
+      <td>不知道该改哪里，甚至不知道这里有问题</td>
+      <td>某个页面的强调色没有跟着 <code>bannerBg</code> 变——你根本不会想到去检查</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>三者中最糟的是第三个。变更放大至少还会痛，痛了就会去找；认知负荷至少是可见的成本；而「未知的未知」是<strong>你连搜索的方向都没有</strong>。作者说得很绝：唯一能确定没有漏的办法是读完系统里的每一行代码，而这在任何规模的系统上都做不到，甚至读完了也不够，因为那个改动可能依赖于一个从未被记录下来的细微设计决定。</p>
+
+<div class="excerpt">
+<span class="src">第 2 章 · 为什么未知的未知最糟</span>
+<p>在复杂性的三种表现形式里，未知的未知是最糟糕的：它意味着你本该知道某件事，却无从找到它是什么，甚至无从知道问题的存在，直到错误已经发生。变更放大很烦人，但只要你知道该改哪些代码，改完系统就能工作；认知负荷会抬高改动的成本，但只要读哪些信息是明确的，改动仍然可能正确。面对未知的未知，你既不清楚该做什么，也无法判断方案是否有效。</p>
+</div>
+
+<h3>症状一：变更放大在 C 项目里的样子</h3>
+
+<p>最经典的是「同一个常量被抄进多个编译单元」。真实一点的形态：一个报文头同时被发送端、接收端和抓包工具解析，三处各自 <code>#pragma pack</code>、各自算偏移。协议加一个字段，你要改三处，而且没有任何工具会告诉你第三处忘改了——它只会在某个版本的抓包文件里安静地错位。</p>
+
+<p>注意变更放大至少有一个好处：<strong>它痛</strong>。痛可以被自动化。把常量换成 <code>enum</code>，把字段偏移换成 <code>offsetof</code>，把「必须同步」换成编译期 <code>static_assert</code>，痛就变成了编译错误——编译错误是我们能拿到的最便宜的保险。</p>
+
+<h3>症状二：认知负荷在 Rust 里反而更清楚</h3>
+
+<p>作者用 C 的 <code>malloc</code> / <code>free</code> 举例：一个函数分配内存、返回指针、并假定调用者会释放。你写一行调用，就得记住一整条生命周期规则；忘了就是泄漏。Rust 的 <code>Result&lt;T, E&gt;</code> 和所有权体系做的是同一件事的反面——把这条规则从「你要记住的知识」变成「编译器会检查的类型」。这不是说 Rust 不复杂，而是说它把一条隐性规则从认知负荷里搬走了。</p>
+
+<p>同一个道理在 C++ 里是 RAII：<code>std::vector&lt;u8&gt;</code> 替你管生命周期，<code>std::unique_ptr&lt;FILE, decltype(&amp;fclose)&gt;</code> 替你管 <code>FILE*</code>。你少记一条规则，认知负荷就少一分。</p>
+
+<h3>症状三：未知的未知，来自「一处改了、别处没跟上」</h3>
+
+<p>书里那个例子的结构值得原样记住：<em>系统有了中心变量，看起来很容易改，但另一处手工指定的值必须跟着变，而没人知道它存在。</em> 换成 C：页大小从一个宏改成了运行时查询，但某处 <code>mmap</code> 的对齐仍然写死 <code>4096</code>。改了宏，编译通过，测试通过，只在 ARM64 的 64K 页机器上崩。</p>
+
+<div class="card">
+<h4>常见误区</h4>
+<p><strong>用代码行数衡量复杂性。</strong>行数多的实现，如果接口简单，可以是很低的复杂性；行数少的实现，如果读它要打开另外五个文件，复杂性很高。量的是「理解成本」，不是「文本体积」。作者还补了一句更狠的：他见过让应用只需几行代码就能写出来的框架，但那几行到底是什么，极难弄明白。有时写得更多反而更简单，因为它压低了认知负荷。</p>
+</div>
+
+<h2><span class="num">2.3</span>两个成因</h2>
+
+<div class="grid2">
+  <div class="card">
+    <h4>依赖 Dependencies</h4>
+    <p>某段代码不能被孤立地理解和修改。改 A 必须先看 B。</p>
+    <p class="term-line">→ 变更放大 + 认知负荷</p>
+  </div>
+  <div class="card">
+    <h4>晦涩 Obscurity</h4>
+    <p>重要的信息不明显：名字太泛、单位未注明、关键约束只存在于某人脑子里。</p>
+    <p class="term-line">→ 未知的未知 + 认知负荷</p>
+  </div>
+</div>
+
+<p>依赖不是纯粹的坏东西。作者特意说明：每次你写一个新类或一个新模块，都是在围绕它的接口建立依赖。目标不是消灭依赖，而是<strong>减少数量、让剩下的依赖尽量简单和明显</strong>。网站例子里，新的做法消灭了页面之间的互相依赖，却引入了对 <code>bannerBg</code> 的依赖——而这笔交易划算，因为新依赖是明显的、可搜索的、编译器能管的。</p>
+
+<p>这条「划算的交易」对底层读者有直接的操作含义：如果你不得不在两个方案里选，选那个<strong>破坏时会编译失败</strong>的方案。</p>
+
+<h3>晦涩的三种典型来源</h3>
+
+<ul>
+  <li><strong>名字不承载信息。</strong><code>time</code>、<code>size</code>、<code>buf</code>、<code>data</code>——单独看等于没名字。</li>
+  <li><strong>单位/量纲没写。</strong><code>int timeout</code> 是毫秒还是微秒？<code>size_t len</code> 是字节还是元素个数？读遍代码也可能看不出来，只能问作者。C 里这一点尤其致命，因为类型系统帮不了你。</li>
+  <li><strong>不一致。</strong>同一个名字在两处表示两件事，或者同一个概念在两处有两个名字。开发者无法确定某个变量到底指什么。</li>
+</ul>
+
+<p>作者还有一句判断标准很好用：<strong>需要大量文档，往往是设计不对的信号</strong>。减少晦涩最有效的办法不是补文档，而是简化设计。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>/* sensor.h —— 看起来封装了，其实全靠注释活命 */
+struct sensor {
+    int fd;
+    unsigned rate;      /* 采样率 */
+    unsigned reg;
+    void *buf;
+    size_t len;
+};
+
+int sensor_read(struct sensor *s, void *out, size_t n);</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p><code>rate</code> 的单位没写，<code>reg</code> 是什么寄存器没说，<code>len</code> 是 <code>buf</code> 的容量还是已填充长度？调用者必须先读实现才知道怎么填这个结构体——于是每个使用者都在自己脑子里维护一份「这个字段其实表示什么」的副本。这就是晦涩，它直接制造未知的未知。</p>
+<p><code>sensor_read</code> 返回 <code>int</code>，但没人知道失败时 <code>out</code> 有没有被写过、<code>len</code> 有没有被更新。调用方只能猜，猜错就是读到未初始化内存。</p>
+</div>
+</div>
+<p>改法：把可变状态收进实现，接口只暴露调用者真正需要的两三个操作。比如 <code>sensor_open(dev_path, hz)</code>、<code>sensor_read_blocking(s, out, cap) -&gt; Result&lt;size_t, errno_t&gt;</code>、<code>sensor_close(s)</code>；单位写进参数名（<code>hz</code>、<code>timeout_ms</code>），错误语义写进头文件注释并保证「失败时 out 不被写」。结构体字段从公开变成不透明指针。<strong>能藏起来的字段，就一个都不要露。</strong></p>
+</div>
+
+<p>对照上一节的表：依赖解释前两个症状，晦涩解释后两个。这就是为什么消除复杂性只有两条路（第 1 章）——<strong>减少依赖（封装）</strong>和<strong>减少晦涩（让它显而易见）</strong>。</p>
+
+<h2><span class="num">2.4</span>它是增量累积的</h2>
+
+<p>这是本章最需要记住的一句：</p>
+
+<blockquote>
+<p>复杂性不是由单个灾难性错误引起的；它是由成千上万个小的依赖和晦涩累积而成的。</p>
+</blockquote>
+
+<p>推论有两条，都很不客气：</p>
+<ol>
+  <li>你不会在某天突然发现系统变复杂了，所以<strong>没有「该处理了」的报警点</strong>。</li>
+  <li>一旦累积起来，<strong>就很难再消除</strong>——因为清理本身也需要理解整个系统。</li>
+</ol>
+
+<p>更麻烦的是心理层面：每一个单独的妥协都说得通。「这一次多加一个 <code>#define</code> 无所谓」「这一次多拷一份解析逻辑，赶时间」。如果每个开发者对每一次改动都这么想，复杂性就迅速堆起来了。而单独修掉一个依赖或一处晦涩，几乎看不出任何变化——所以清理永远排不上优先级。</p>
+
+<p>所以第 3 章要给的不是技术，是一种态度：<em>零容忍</em>。</p>
+
+<h2><span class="num">2.5</span>把症状当成评审用语</h2>
+
+<p>三个症状真正好用的地方在于：它们是<strong>可命名的</strong>。评审时说「这段不太好」没人能接；说「这是变更放大，协议布局被抄进了三个编译单元」对方立刻知道要干什么。第三个痛点——评审说不出所以然——有一半就靠这套词汇解决。</p>
+
+<table>
+  <thead><tr><th>你在评审里看到</th><th>可以说</th><th>建议</th></tr></thead>
+  <tbody>
+    <tr><td>同一个常量出现在多个文件</td><td>变更放大</td><td>收进一个头文件，或改成函数查询</td></tr>
+    <tr><td>调用者必须记住调用顺序</td><td>认知负荷 + 晦涩</td><td>合并成一个调用，把顺序收进实现</td></tr>
+    <tr><td>需要读三个文件才能确定这里安全</td><td>未知的未知</td><td>把那段知识挪到一个模块里</td></tr>
+    <tr><td>函数名需要注释解释单位</td><td>晦涩</td><td>把单位写进名字或改类型</td></tr>
+  </tbody>
+</table>
+
+<hr>
+
+<h2><span class="num">练习</span>给它贴标签</h2>
+
+<p>下面四个场景，判断它主要属于哪个症状。别急着选「都对」——找出<strong>主导</strong>的那一个。</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>你把 <code>struct peer</code> 的 <code>addr</code> 改名为 <code>endpoint</code>，编译器报了 14 个文件的错。</p>
+    <div class="opts">
+      <button data-ok="1">变更放大</button>
+      <button>认知负荷</button>
+      <button>未知的未知</button>
+    </div>
+    <p class="note">一个概念性改动扩散到 14 个文件，就是变更放大的教科书形态。注意：编译器的报错其实是<strong>好事</strong>——它把「未知」变成了「已知」。</p>
+  </div>
+
+  <div class="row">
+    <p>某个函数接受一个 <code>int timeout</code>。读遍代码也看不出单位是秒还是毫秒，只能去问作者。</p>
+    <div class="opts">
+      <button>变更放大</button>
+      <button data-ok="1">认知负荷</button>
+      <button>未知的未知</button>
+    </div>
+    <p class="note">你要完成任务，必须额外掌握一条不写在签名里的知识——这就是认知负荷。它同时也是<strong>晦涩</strong>（信息不明显），成因与症状在此重叠。</p>
+  </div>
+
+  <div class="row">
+    <p>某个序列化函数在内部悄悄做字节序转换。你在另一处按同样方式调用，结果数值差了 256 倍，测试没覆盖到。</p>
+    <div class="opts">
+      <button>变更放大</button>
+      <button>认知负荷</button>
+      <button data-ok="1">未知的未知</button>
+    </div>
+    <p class="note">最典型的「未知的未知」：你<strong>不知道该去怀疑这里</strong>。没有报错、没有编译失败，只有一个安静的错误答案。</p>
+  </div>
+
+  <div class="row">
+    <p>一个结构体有 12 个字段，6 个函数各自读写其中六七个字段。改一个函数前你得先看完全部 6 个。</p>
+    <div class="opts">
+      <button>变更放大</button>
+      <button data-ok="1">认知负荷</button>
+      <button>未知的未知</button>
+    </div>
+    <p class="note">问题是「一次要装进脑子多少东西」。行数不多也可能认知负荷极高——这正好证明了复杂性不等于代码量。</p>
+  </div>
+</div>
+
+<div class="key">
+<p><strong>可以贴进 code review 的原话：</strong>「这里属于变更放大/未知的未知——同一个设计决策出现在多个地方。请把它收到一个模块里，让「改漏了」变成编译错误而不是线上事故。」</p>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>接下来</h2>
+
+<p>知道了诊断标准，下一步是处方。但第 3 章先不给技术，它先讲一件更难的事：<strong>为什么大多数人明知会烂，还是选择了战术编程</strong>。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch02.html">第 2 章 复杂性的本质（中文全译）</a> — 原文有图 2.1 的三张对比图，看一遍比我这里的表格直观。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">想练手的话，把你手上一个「改起来要动好几处」的改动贴给我（贴 <code>grep</code> 结果就够），我们一起判断它属于哪个症状、成因是依赖还是晦涩。诊断对了，处方才有意义。</p>
+
+  <div class="nav-links">
+    <span><a href="0001-complexity-is-the-enemy.html">← L1 · 复杂性是唯一的敌人</a></span>
+    <span><a href="0003-working-code-is-not-enough.html">L3 · 工作代码是不够的 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

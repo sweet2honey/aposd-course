@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L17 · 一致性 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 17 章 · 课程 17 / 21</p>
+
+<h1>一致性</h1>
+<p class="standfirst"><a class="gl" href="../reference/glossary.html#consistency">一致性</a><span class="en-inl">consistency</span>是唯一一种「不写代码就能减少代码」的技术。它买到的东西是认知杠杆：看懂一处，等于看懂所有同类处。而它最贵的失败不是风格不统一，是<strong>两件不同的事长得一样</strong>——那会把读者的每一次合理推断都变成一次赌注。</p>
+
+<h2><span class="num">17.1</span>一致性买的是什么</h2>
+
+<div class="excerpt">
+<span class="src">第 17 章 · 开篇</span>
+<p>一致性是降低系统复杂性、让行为更明显的一个强大工具。如果系统是一致的，就意味着<strong>相似的事以相似的方式完成，而不同的事以不同的方式完成</strong>。一致性创造了认知杠杆：一旦你懂得了某一处怎么工作，你就可以用这份知识立刻理解其他用同样方式做的地方。</p>
+<p>一致性减少错误。如果系统不一致，两种情况可能看起来一模一样，实际上却不同。开发者看到一个眼熟的模式，就基于以前遇到的那个模式做出了错误假设。反过来，如果系统是一致的，基于「看起来眼熟」所做的假设就是安全的。</p>
+</div>
+
+<p>这段话里有两个断言，第二个比第一个值钱得多。第一个断言说的是效率：省下重新理解的时间。第二个断言说的是<strong>正确性</strong>：一致性让「凭直觉推断」这件事变得可靠，而不一致让每一次直觉推断都变成一次小赌博。</p>
+
+<p>对你的三个痛点来说，一致性的位置很特殊：</p>
+
+<ul>
+  <li><strong>对「改一处怕漏」：</strong>一致性不直接减少改动点，但它让你能<em>用搜索代替记忆</em>。如果所有「取当前时间」的地方都叫 <code>now_ms()</code>，那 <code>grep now_ms</code> 就是一份完整的改动清单；如果有三种写法（<code>clock()</code>、<code>gettimeofday</code>、<code>std::chrono::steady_clock</code>），你的清单就永远不完整。</li>
+  <li><strong>对「评审说不出所以然」：</strong>一致性给了你评审里最硬的一句话——「这个仓库里其他 11 处都这么做，这一处没有」。它不需要你论证哪种更好，只需要你指出不一致。</li>
+  <li><strong>对「越拆越乱」：</strong>一致性是拆分的粘合剂。两个<a class="gl" href="../reference/glossary.html#module">模块</a><span class="en-inl">module</span>如果遵守同一套约定，它们之间的边界才可预测；否则每次跨模块调用都要重新确认对方的语义。</li>
+</ul>
+
+<h2><span class="num">17.2</span>一致性可以施加在哪些层面</h2>
+
+<p>书里列了五个层面，从最表面到最深刻。前两个几乎免费，后三个才真正省钱。</p>
+
+<table>
+  <thead><tr><th>层面</th><th>C/C++/Rust 里的样子</th><th>不一致的代价</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>名字</td>
+      <td><code>size()</code> / <code>length()</code> / <code>count()</code> 三种都表示「元素个数」</td>
+      <td>每个新人都要问一遍「这俩有什么区别」，答案通常是「没有」</td>
+    </tr>
+    <tr>
+      <td>编码风格</td>
+      <td>大括号位置、<code>#include</code> 顺序、<code>const</code> 放左还是放右</td>
+      <td>低。几乎全部可以交给 <code>clang-format</code>/<code>rustfmt</code> 消灭</td>
+    </tr>
+    <tr>
+      <td>接口</td>
+      <td>所有 <code>Reader</code> 都提供 <code>read()</code> 返回 <code>Result&lt;size_t&gt;</code>，0 表示 EOF</td>
+      <td><strong>高</strong>。学会一个实现就能看懂其余同类，这是复用真正发生的地方</td>
+    </tr>
+    <tr>
+      <td>设计模式</td>
+      <td>仓库里所有异步都走同一套 <code>Reactor</code> + <code>Handler</code> 回调</td>
+      <td><strong>高</strong>。读者认识这个形状，就能跳过对控制流的逐行推理</td>
+    </tr>
+    <tr>
+      <td><a class="gl" href="../reference/glossary.html#invariant">不变量</a><span class="en-inl">invariant</span></td>
+      <td>「每行以 <code>\n</code> 结尾」「所有 offset 都相对文件头」「所有 buffer 8 字节对齐」</td>
+      <td><strong>最高</strong>。不变量每少一条，代码里就多一类<a class="gl" href="../reference/glossary.html#special-case">特殊情况</a><span class="en-inl">special case</span>要处理</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>「不变量」这一行值得单独讲，因为它最不像「风格问题」，收益却最大。一个不变量是某个结构<strong>永远成立</strong>的性质。它的作用是：让读者可以在任意一行代码上原地推断，而不必回溯这条路径是从哪进来的。</p>
+
+<pre><code>// 不变量：lines_ 中的每个元素都以 '\n' 结尾，
+// 且任意元素内部不含 '\n'。因此 split 只需按元素取，
+// 拼接时不需要再补分隔符。
+std::vector&lt;std::string&gt; lines_;</code></pre>
+
+<p>有了这条不变量，所有使用 <code>lines_</code> 的代码都不需要再判断「最后一行有没有换行符」。没有它，这个判断会出现在五个地方，而且其中三个会写错。<strong>不变量的一致性，就是「同一件事在每一处都以同样的方式成立」。</strong></p>
+
+<h2><span class="num">17.3</span>反例：同一个仓库里的两套错误处理</h2>
+
+<div class="anti">
+<h4>反例：三种失败语义，同一个模块</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>// 版本 A：返回负 errno，0 表示成功
+int write_block(uint32_t id,
+                const void* buf, size_t n);
+
+// 版本 B：返回 bool，错误码走输出参数
+bool read_block(uint32_t id,
+                void* buf, size_t n,
+                int* err);
+
+// 版本 C：返回长度，失败返回 -1
+ssize_t sync_block(uint32_t id);</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>三种形态各自都合理，凑在一起就是灾难：</p>
+<p>① <strong>调用点必须逐字回查</strong>。写完 <code>if (read_block(...))</code> 你要停一下：<code>true</code> 是成功还是失败？——这个问题在同一个文件里问了三次，每次答案不同。</p>
+<p>② <strong>错误处理无法统一</strong>。你没法写一个通用的重试包装，因为「怎么判断失败」有三种。于是重试逻辑被复制三份，其中一份漏了 <code>EAGAIN</code> 需要重试这个分支。</p>
+<p>③ <strong>变更会漏。</strong>要加一个新错误码 <code>E_BUSY</code>，你得改三处判断，<code>bool</code> 那版还会把它折叠成 <code>false</code>——信息在那一层就丢了，上层永远不知道是忙还是坏。</p>
+<p>④ 最糟的：<strong>它们看起来一样</strong>。三个函数名都是 <code>xxx_block</code>、都接受 block id，读者的模式识别会给出错误答案。</p>
+</div>
+</div>
+<p>改法不是「统一成最好那个」（那要改所有调用点），而是<strong>先把出口统一，再逐块迁移</strong>。这个仓库的 C++ 部分可以只用一条约定：</p>
+<pre><code>// 所有块 I/O 都返回 Status；status.ok() 为真时
+// out 参数有效，否则 out 不被修改。
+struct Status {
+  int  code = 0;                 // 0 = 成功，否则为 errno
+  bool ok() const { return code == 0; }
+  explicit operator bool() const = delete;  // 禁止 if (s) 的歧义
+};
+
+Status write_block(uint32_t id, std::span&lt;const std::byte&gt; buf);
+Status read_block (uint32_t id, std::span&lt;std::byte&gt; out);
+Status sync_block (uint32_t id);</code></pre>
+<p><code>explicit operator bool() = delete</code> 是个小技巧但很值：它让「顺手写成 <code>if (status)</code>」编译失败，逼调用点写出 <code>if (st.ok())</code>。这就是把一致性从人的记忆里搬进编译器——下一节讲的就是这件事。</p>
+</div>
+
+<h2><span class="num">17.4</span>让约定活下来：三件工具</h2>
+
+<p>书里说得很直白：一致性很难维持，尤其是很多人长期做一个项目的时候。有人不知道别的组定下的约定，新人不知道约定，于是<strong>无意中违反约定，并且造出与既有约定冲突的新约定</strong>。它给了三个手段，按可靠性排序：</p>
+
+<div class="excerpt">
+<span class="src">第 17 章 · 建立并保持一致性</span>
+<p>文档。写一份文档，列出最重要的总体约定，比如编码风格指南，放在开发者会看到的地方（比如项目 Wiki 的显眼处）。鼓励新成员阅读它，也鼓励老人不时回顾。<strong>而对于更局部的约定，比如不变量，要在代码里找到合适的位置把它们记下来。如果你不把约定写下来，别人就不太可能遵守它。</strong></p>
+<p>执行。即使有好的文档，开发者也很难记住所有约定。<strong>落实约定最好的办法是写一个检查违规的工具，并确保代码在通过检查之前不能提交进仓库。</strong>自动检查器对低层次的语法约定尤其有效。</p>
+</div>
+
+<p>书里配了一个极好的真实案例：一个项目长期受行尾符折磨——Unix 上的人用 <code>\n</code>，Windows 上的人用 <code>\r\n</code>，编辑器会悄悄把整个文件的换行符换掉，于是每次小改动都表现为「整个文件被改」。约定写了、也说了，还是不断有人违反，每个新人来都要重新踩一遍。最后解决方式是一个<strong>提交前的脚本</strong>：发现被改动的文件里含 <code>\r</code> 就中止提交。问题一次消失，而且顺带完成了新人培训。</p>
+
+<p>这个案例的模式可以复制到任何低层约定上。你的拦截钩子里值得放的三类检查：</p>
+
+<ol>
+  <li><strong>可以用 grep 判断的。</strong>提交的 diff 里出现 <code>std::endl</code>（而不是 <code>'\n'</code>）、出现 <code>new </code>、出现 <code>reinterpret_cast</code> 而不带 <code>// why:</code> 注释——全部可以几行 shell 拦住。<em>成本最低，命中率最高。</em></li>
+  <li><strong>需要语义判断的，用编译器。</strong>上面那个 <code>explicit operator bool() = delete</code> 就是这一类：你不用写检查脚本，C++ 本身就是检查器。同类还有 <code>[[nodiscard]]</code>、<code>enum class</code>（禁止隐式转 int）、<code>std::span</code>（禁止退化成裸指针+长度两个参数）、Rust 的 newtype（禁止把 <code>FileId</code> 传给要 <code>BlockId</code> 的地方）。</li>
+  <li><strong>需要跨文件知识的，用测试或生成。</strong>「每个 `enum class` 值都要有一份字符串表」这种约定，可以写个静态断言，或者干脆从一份源定义生成枚举和字符串表。<em>生成器是最高级的一致性：它让不一致在物理上不可能发生。</em></li>
+</ol>
+
+<div class="key">
+<p><strong>一个判据：</strong>如果一条约定只能靠「记得」来维持，它就不是约定，是愿望。约定要么写进文档且有人读，要么写进工具且拦得住人。<strong>能拦住的才算数。</strong></p>
+</div>
+
+<p>第三件工具是代码评审，书里给了它一个不太客气但准确的定位：<strong>评审者越挑剔，团队里所有人学会约定的速度就越快。</strong>这句话的另一面是——如果你的评审只说「风格问题，不重要」，那约定就永远不会被学会。</p>
+
+<h2><span class="num">17.5</span><a class="gl" href="../reference/glossary.html#when-in-rome">在罗马时</a><span class="en-inl">when in Rome</span>：三条最常被违反的规则</h2>
+
+<p>书里用了那句老话：<em>在罗马，就像罗马人那样做</em>。改成操作性的三条：</p>
+
+<div class="excerpt">
+<span class="src">第 17 章 · 在罗马时</span>
+<p>处理一个新文件时，先环顾四周，看看既有代码的结构：公共变量和方法是不是都声明在私有成员之前？方法是按字母序排的吗？变量用 <code>camelCase</code> 还是 <code>snake_case</code>？<strong>当你看到任何看起来像约定的东西，就遵循它。</strong>做设计决策时，问自己项目里别处是不是做过类似的决策；如果是，就找一个现成的例子，在新代码里用同样的做法。</p>
+<p>不要改变既有约定。抵制「改进」既有约定的冲动。<strong>有一个「更好的主意」并不足以成为引入不一致的充分理由。</strong>你的新想法可能确实更好，但一致性本身的价值，几乎总是大于一种做法胜过另一种做法的价值。</p>
+</div>
+
+<p>第二条是最难的，因为它要求你在明知道自己对的时候让步。书里给了两个可以公开讨论的问题，用来判断该不该推翻旧约定：</p>
+
+<ol>
+  <li><strong>你手上有没有大量新信息，是当初建立旧约定时不存在的？</strong>「我觉得 <code>Result</code> 比错误码好看」不是新信息；「我们三年前上 C++17 了，现在有 <code>std::optional</code> 而当时没有」是。</li>
+  <li><strong>新做法值得把全部旧用法都更新一遍吗？</strong>如果答案是「只改新代码，旧代码不动」，那这不是改进约定，这是制造第二套约定——比维持旧约定更糟，因为读者从此必须同时懂两套。</li>
+</ol>
+
+<p>如果两个答案都是「是」、而且组织同意了，那么正确的做法是<strong>全量迁移，做完之后不留旧约定的痕迹</strong>。半迁移是所有选项里最坏的：它同时继承了两种约定的成本，却只拿到一种的收益。</p>
+
+<p>对「改一处怕漏」这个痛点，这一段有个极实用的推论：<strong>当你不确定该用哪种写法时，去仓库里搜一个现成的同类，复制它的形状。</strong>这一步花 30 秒，省掉的是评审里的一轮往返，以及未来「两种写法并存」的永久维护成本。</p>
+
+<h2><span class="num">17.6</span>走得太远：不同的事必须长得不同</h2>
+
+<p>一致性最容易被误用的地方在这里。书里那句定义其实有两个方向，大多数人只记住了第一个：</p>
+
+<div class="excerpt">
+<span class="src">第 17 章 · 走得太远</span>
+<p>一致性不仅意味着相似的事应当以相似的方式完成，也意味着<strong>不同的事应当以不同的方式完成</strong>。如果你对一致性过于热衷，试图把不同的事强行套进同一个模子——比如给确实不同的东西用同一个变量名，或者把不适合某个模式的任务硬套那个模式——你制造的只会是复杂性和混乱。</p>
+<p>一致性只有在开发者能够确信「如果它看起来像 x，那它确实是 x」时，才会带来好处。</p>
+</div>
+
+<p>最后那句话是整章最锋利的一句，它给了你一个反向检查清单：<strong>凡是你让两个东西长得一样的地方，问一句——它们真的是一回事吗？</strong>常见的三种强行统一：</p>
+
+<ul>
+  <li><strong>同一个变量名表示两个概念。</strong>第 14 章的经典事故：<code>block</code> 既指文件逻辑块号又指磁盘物理块号。为了「命名一致」，两件事共用一个词，结果是一次数据损坏。</li>
+  <li><strong>同步和异步路径塞进一个接口。</strong>为了「只有一种调用方式」，让 <code>read()</code> 有时阻塞有时不阻塞——读者从此无法从签名推断它会不会卡住线程。</li>
+  <li><strong>硬套设计模式。</strong>给一个只有两个状态的开关套上完整的 State 模式，六七个类。模式本身没错，错在把「不同的事」（简单状态 vs 复杂状态机）做成了同一个形状。</li>
+</ul>
+
+<p>判断标准可以反过来用：<strong>一致的目的是让读者的推断可靠。</strong>如果你为了让形状统一，反而让某个推断变得不可靠了，那这次统一就是负收益。</p>
+
+<hr>
+
+<h2><span class="num">练习</span>这是一致性，还是过度统一</h2>
+
+<p>五个场景。判断它是「好的一致性」、「过度统一」，还是「该统一但没统一」。</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>仓库里所有 <code>enum class</code> 都配套一个 <code>to_string()</code>，且都由同一个 <code>X-macro</code> 生成枚举和字符串表。</p>
+    <div class="opts">
+      <button data-ok="1">好的一致性</button>
+      <button>过度统一</button>
+      <button>该统一而没统一</button>
+    </div>
+    <p class="note">这是最高级形态：<strong>不一致在物理上不可能发生</strong>。加枚举值时忘了加字符串这件事，被生成器消灭掉了——不用记、不用查、不用评审提醒。这类约定值得主动去找。</p>
+  </div>
+
+  <div class="row">
+    <p>为了「接口统一」，让 <code>FileReader::read()</code> 和 <code>SocketReader::read()</code> 都返回 <code>Result&lt;size_t&gt;</code>，且都保证「返回 0 表示 EOF」；但 socket 的 0 其实是「对端关闭」。</p>
+    <div class="opts">
+      <button>好的一致性</button>
+      <button data-ok="1">过度统一</button>
+      <button>该统一而没统一</button>
+    </div>
+    <p class="note">形状统一了，<strong>语义没有</strong>。读者看到 <code>Result{0}</code> 会按文件语义理解成「正常读完了」，而在 socket 上这意味着对端断了、后续写入会失败。这违反 17.6 那句判据：看起来像 x，其实不是 x。正确做法是让两者长得<em>不一样</em>——比如 socket 用一个独立的 <code>Eof</code> 之外还要暴露连接状态。</p>
+  </div>
+
+  <div class="row">
+    <p>同一个 <code>.cpp</code> 里，一半函数用 <code>int</code> 返回码，一半抛 <code>std::system_error</code>，因为「这两批代码是不同时期写的」。</p>
+    <div class="opts">
+      <button>好的一致性</button>
+      <button>过度统一</button>
+      <button data-ok="1">该统一而没统一</button>
+    </div>
+    <p class="note">这就是 17.3 那个反例的现场。它直接制造你的痛点①：任何跨这两批代码的改动，都要同时处理两种失败路径，而「哪些函数属于哪批」只能靠记忆或逐个读实现。至少要在文件头写清边界，更好的做法是先统一出口类型再逐块迁移。</p>
+  </div>
+
+  <div class="row">
+    <p>新写的代码里，作者把 <code>sockaddr</code> 相关的转换写成 <code>to_sockaddr_in()</code>；仓库里既有的 12 处都叫 <code>make_sockaddr()</code>。</p>
+    <div class="opts">
+      <button data-ok="1">该统一而没统一</button>
+      <button>好的一致性</button>
+      <button>过度统一</button>
+    </div>
+    <p class="note">典型的「在罗马时」失守。而且它成本极低——改名只需一次重命名。这类问题最该在评审里当场说，因为新名字一旦合进去，就有了 13 处两种写法，再改就要说服更多人。</p>
+  </div>
+
+  <div class="row">
+    <p>仓库里所有缓冲区都保证 8 字节对齐，这条不变量写在 <code>Buffer</code> 的类注释里，并且 <code>alloc()</code> 里有 <code>assert</code> 守着。</p>
+    <div class="opts">
+      <button>过度统一</button>
+      <button>该统一而没统一</button>
+      <button data-ok="1">好的一致性</button>
+    </div>
+    <p class="note">这是不变量型的一致性，收益最高：下游所有 <code>memcpy</code>、SIMD 载入、<code>reinterpret_cast</code> 都不必再考虑未对齐路径。注意它同时满足两个条件——<strong>写下来了</strong>（在类注释里），而且<strong>有人守</strong>（assert）。缺任一条，它半年后就不成立了。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>把这个约定变成拦得住的工具</h2>
+
+<div class="recall">
+<p>你的团队有个约定：「所有对外暴露的 <code>struct</code> 里，表示时间的字段必须带单位后缀（<code>_ms</code> / <code>_ns</code> / <code>_s</code>）。」这条约定写在 Wiki 上，半年内被违反了 7 次，其中两次导致把秒当毫秒的线上事故。</p>
+<p>用 17.4 的三类工具，各给一个具体做法。重点：哪一类最划算？</p>
+<textarea placeholder="grep 类：… 编译器类：… 生成类：… 最划算的是…"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p><strong>① grep 类（最便宜，但只能拦住一半）：</strong>在提交钩子里扫 diff 新增的 <code>struct</code> 成员声明，匹配形如 <code>(int|int64_t|uint32_t|long)\s+\w*(time|timeout|delay|interval|ttl|age)\w*\s*;</code> 的行，如果变量名不以 <code>_ms</code>/<code>_ns</code>/<code>_s</code>/<code>_us</code> 结尾就报错。缺点：靠正则猜语义，会漏也能误报。</p>
+<p><strong>② 编译器类（最划算）：</strong>把「裸数字表示时间」这件事从类型系统里消灭掉，用强类型包一层：</p>
+<pre><code>// 不同单位的时长是不同类型，不能互相赋值
+template &lt;class Tag&gt;
+struct Duration {
+  int64_t v;
+  explicit constexpr Duration(int64_t x) : v(x) {}
+};
+using Millis = Duration&lt;struct MillisTag&gt;;
+using Micros = Duration&lt;struct MicrosTag&gt;;
+
+// 唯一允许的跨单位转换，必须显式写出来
+constexpr Micros to_micros(Millis d) { return Micros{d.v * 1000}; }
+
+struct Timeout {
+  Millis connect;   // 单位在类型里，名字可以随意
+  Millis read;
+};</code></pre>
+<p>现在 <code>Timeout{Micros{500}}</code> 直接编译失败，命名约定的违规变成了编译错误。<strong>而且它顺带解决了 7 次违规背后的问题：读者不需要靠后缀来推断单位。</strong></p>
+<p><strong>③ 生成类（这里不适用）：</strong>如果字段定义本来就在某个 schema 里（protobuf、IDL、表定义），那从 schema 生成结构体，并在生成器里强制单位类型，是最彻底的。但如果这些 struct 是手写的，为它引入一套生成器就过度了。</p>
+<p><strong>结论：</strong>②最划算。① 作为兜底值得加（十分钟的活），但它的定位是「防住还没迁移的老代码」；修复是让裸 <code>int64_t</code> 不再能表示时间。<strong>命名约定治的是症状，类型治的是病。</strong>这也解释了为什么 Wiki 上的约定会被违反 7 次——靠命名的约定，只能靠记得。</p>
+<p>顺便注意一个信号：<strong>一条约定被违反 7 次，通常不是因为团队不认真，而是因为它没有可执行的入口。</strong>这本身是设计问题，不是纪律问题。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>一句话评审</h2>
+
+<div class="key">
+<p><strong>这么说就够具体了：</strong>「这里新加了 <code>read_block</code>，返回 <code>bool</code> + 输出参数错误码。但仓库里另外 11 处块 I/O 都返回负 errno / 0 表示成功（<code>write_block</code>、<code>trim_block</code> 等都是）。同一个文件里两种失败语义并存，调用点必须逐个回查签名——我建议这次就跟既有约定走；如果你确实觉得 <code>bool</code> 更好，那值得单独开一次全量迁移，把 12 处一起改掉，而不是让两种写法长期共存。」</p>
+</div>
+
+<p>一致性评审都能套这个说法：<strong>指出新写法 → 指出既有的 N 处反例（给数字）→ 说明不一致的具体代价（调用点必须回查）→ 给出两条路（跟随 or 全量迁移），并把「半迁移」明确排除。</strong>最后一步是关键：它让讨论从「你觉得哪个好」变成「你选哪条路」，而两条路都不会让仓库烂掉。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch17.html">第 17 章 一致性（中文全译）</a> — 原文里那段行尾符的故事（Unix vs Windows 的 <code>\r\n</code>）值得整段读完，它是「文档不够、必须有执行工具」这个论断最有力的实例。</p>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch14.html">第 14 章 选择的名字</a> — 本章的「名字」层面在那里有完整展开，包括第 17.6 节提到的 <code>block</code> 事故的原始版本。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">贴一个你们仓库里「我知道它不一致、但改动面太大一直没动」的约定（错误处理方式、时间单位、字符串类型、锁的用法都算）。我们一起判断：是该跟随、该全量迁移、还是该把它变成类型或检查脚本——三条路的成本差别通常比你想象的大。</p>
+
+  <div class="nav-links">
+    <span><a href="0016-modifying-existing-code.html">← L16 · 修改现有的代码</a></span>
+    <span><a href="0018-obvious-code.html">L18 · 代码应该是显而易见的 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

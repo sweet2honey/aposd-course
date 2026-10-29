@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>前五章速查 · 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body class="sheet">
+<main class="page">
+
+<p class="crumb">速查 · 第 1–5 章一页纸</p>
+
+<h1>前五章速查</h1>
+<p class="standfirst">贴在显示器边上的那张纸。五条原则、一张诊断表、四个红旗。</p>
+
+<h2>一 · 一条主线</h2>
+<p style="font-family:var(--sans);font-size:0.95rem;">
+  复杂性是唯一的敌人 → 它有可观察的<strong>症状</strong>与可切除的<strong>成因</strong> → 对抗它需要持续<strong>投资</strong> → 投资的产物是<strong>深模块</strong> → 深模块靠<strong>信息隐藏</strong>实现
+</p>
+
+<div class="two">
+
+<div>
+<h2>二 · 五个核心断言</h2>
+<ol>
+  <li><strong>软件的唯一硬限制是人能不能理解它。</strong>工具帮不上最后一程。</li>
+  <li><strong>复杂性 = 难以理解和修改。</strong>与规模、功能无关；由读者判定。</li>
+  <li><strong>它是增量累积的。</strong>所以没有报警点，所以必须零容忍。</li>
+  <li><strong>好设计不免费，要付 10–20%。</strong>省下是一次性的，代价是永久的。</li>
+  <li><strong>深模块 = 简单接口 + 大量功能。</strong>途径是藏起设计决策。</li>
+</ol>
+
+<h2>三 · 诊断表</h2>
+<table>
+  <thead><tr><th>你观察到的</th><th>症状</th><th>成因</th></tr></thead>
+  <tbody>
+    <tr><td>改一处要动多处</td><td>变更放大</td><td>依赖</td></tr>
+    <tr><td>改之前得先读一堆</td><td>认知负荷</td><td>依赖 / 晦涩</td></tr>
+    <tr><td>不知道该改哪、甚至不知道有问题</td><td>未知的未知</td><td>晦涩</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div>
+<h2>四 · 四个红旗</h2>
+<ol>
+  <li><strong>信息泄漏</strong>：同一个设计决策出现在两个模块。→ 合并，或抽出一个只封装它的类。</li>
+  <li><strong>时间分解</strong>：按执行顺序拆模块。→ 改按「需要哪些知识」拆。</li>
+  <li><strong>浅方法</strong>：只做转发、文档比代码长。→ 删掉，或并进调用方。</li>
+  <li><strong>类炎</strong>：为了「小」而拆成大量小类，常见路径变得很麻烦。→ 看有效复杂度。</li>
+</ol>
+
+<h2>五 · 三个自问</h2>
+<div class="diag">
+  <p><strong>改这件事，要动几个文件？</strong><br>超过一个，先找那条被泄漏的知识。</p>
+  <p><strong>用这个模块，必须知道什么？</strong><br>凡是答得出「不该知道」的东西，就是泄漏。</p>
+  <p><strong>删掉它，谁会坏？</strong><br>没人坏 → 它不需要存在。</p>
+</div>
+</div>
+
+</div>
+
+<h2>六 · 常见误用</h2>
+<div class="two">
+<ul>
+  <li><strong>「复杂性 = 代码量大」。</strong>错。行数多但接口简单的实现可以很清晰。</li>
+  <li><strong>「private 就是封装」。</strong>错。getter/setter 把私有变成公开。</li>
+  <li><strong>「封装越多越好」。</strong>错。忽略重要细节的抽象是坏抽象；不同用法真需要不同配置时，必须暴露。</li>
+</ul>
+<ul>
+  <li><strong>「深度 = 面积大」。</strong>错。功能多但接口臃肿的是<em>大而浅</em>。</li>
+  <li><strong>「先战术，回头重构」。</strong>滑坡。越拖越大，越大越不敢动。</li>
+  <li><strong>「有重复就必须合并」。</strong>不一定——先问这两处是不是同<em>一个</em>知识。两个碰巧长得像的东西不该合并。</li>
+</ul>
+</div>
+
+<h2>七 · 一句话带走</h2>
+<div class="key">
+<p>每次改动留 15 分钟问一句：<strong>我刚刚让什么知识泄漏到了第二个地方？</strong></p>
+</div>
+
+<div class="foot">
+  <p>对应课程：<a href="../lessons/0001-complexity-is-the-enemy.html">L1 复杂性是唯一的敌人</a> · <a href="../lessons/0002-symptoms-of-complexity.html">L2 症状与成因</a> · <a href="../lessons/0003-working-code-is-not-enough.html">L3 工作代码是不够的</a> · <a href="../lessons/0004-modules-should-be-deep.html">L4 模块应该是深的</a> · <a href="../lessons/0005-information-hiding.html">L5 信息隐藏</a></p>
+  <p>术语定义见 <a href="glossary.html">术语表</a>。原文：<a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/">中文全译</a>。</p>
+</div>
+
+</main>
+</body>
+</html>

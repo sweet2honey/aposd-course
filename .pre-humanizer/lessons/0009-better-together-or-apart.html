@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L9 · 在一起更好还是分开更好 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 9 章 · 课程 9 / 21</p>
+
+<h1>在一起更好还是分开更好？</h1>
+<p class="standfirst">「拆得越细越好」是这十年最流行也最贵的误解。拆分本身有成本——这一章把成本列出来，然后给一套判断「该合该分」的规则。</p>
+
+<h2><span class="num">9.1</span>拆分不是免费的</h2>
+
+<p>问题本身很朴素：两个功能，该放一起还是分开？它在每个尺度上都成立——两个语句、两个方法、两个类、两个服务。</p>
+
+<p>直觉答案往往是「拆」：组件越小，每个组件越简单。但拆这个动作本身会引入原本不存在的东西：</p>
+
+<ul>
+  <li><strong>数量本身的复杂度。</strong>组件越多，越难在脑子里装下全部；越难找到你要的那一个。而且每多一个组件，就多一个接口。</li>
+  <li><strong>管理代码。</strong>拆之前管一个对象，拆之后管三个——生命周期、状态同步、错误传播，全变成新工作。</li>
+  <li><strong>分离。</strong>拆开的组件物理上离得更远（不同文件、不同 crate）。如果它们真的独立，分离是好事；<strong>如果它们互相依赖，分离就是灾难</strong>——你会不停地在文件之间跳，更糟的是，某天你根本不知道另一边存在。</li>
+  <li><strong>重复。</strong>拆之前只有一份的代码，拆之后可能每个组件都要一份。</li>
+</ul>
+
+<div class="key">
+<p>第三条是「越拆越乱」的准确机制（痛点三）：拆分本身不制造依赖，但它<strong>让已有的依赖变得不可见</strong>。看不见的依赖就是未知的未知。</p>
+</div>
+
+<h2><span class="num">9.2</span>什么算「相关」</h2>
+
+<p>书里给了四条判据，用来判断两段代码是否真的相关。它们比「高内聚低耦合」好用，因为每条都能当场验证：</p>
+
+<table>
+  <thead><tr><th>判据</th><th>怎么验证</th><th>底层例子</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>共享信息</td>
+      <td>两段代码是否依赖同一份知识？改了 A 的假设，B 会不会错？</td>
+      <td>读 HTTP 请求和解析它：读的一方必须知道头部的结束标志，才能知道请求有多长</td>
+    </tr>
+    <tr>
+      <td>一起被使用</td>
+      <td><em>双向</em>：用 A 的人是否几乎总要用 B</td>
+      <td>块缓存 ↔ 哈希表：缓存几乎总带哈希表，但哈希表在别处也常用 → <strong>不满足双向，该分开</strong></td>
+    </tr>
+    <tr>
+      <td>概念上重叠</td>
+      <td>是否存在一个更上位的类别同时包含二者</td>
+      <td>子串查找与大小写转换都属「字符串操作」；流控与可靠交付都属「网络通信」</td>
+    </tr>
+    <tr>
+      <td>无法单独理解</td>
+      <td>不看另一段，能否读懂这一段？</td>
+      <td>日志语句 vs 它的调用点：读调用点的人必须跳去看日志函数才确认记了什么</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>第二行的双向要求特别值得记住，因为它挡住了一类常见的错误合并：<em>「A 总是和 B 一起出现，所以合并吧」</em>——只有当反过来也成立（B 也总是和 A 一起出现）时才成立。哈希表常被块缓存用，但哈希表自己也活得很好。</p>
+
+<h2><span class="num">9.3</span>合并的三个真实收益</h2>
+
+<p>这章最实用的部分，是它明确了「合并」能带来什么。不是笼统的「更内聚」，而是三件具体的事：</p>
+
+<div class="card">
+<h4>收益一：接口可能直接消失</h4>
+<p>书里的 HTTP 服务器例子：原来方法 A 负责从 socket 读到完整请求、方法 B 负责解析字符串。合并之后，「把字符串从 A 传给 B」这个接口<strong>整个不需要了</strong>——它原本存在的唯一理由，就是 A 和 B 是两个方法。</p>
+<p>底层版：先 <code>read_all()</code> 到一个 <code>Vec&lt;u8&gt;</code>，再 <code>parse(buf)</code>。合并成 <code>read_request(stream) -&gt; Request</code> 之后，那个中间 buffer 的分配、扩容、所有权传递全部消失。</p>
+</div>
+
+<div class="card">
+<h4>收益二：某些功能可以自动完成</h4>
+<p>把 <code>FileInputStream</code> 和 <code>BufferedInputStream</code> 合并、默认就带缓冲，绝大多数用户<strong>根本不需要知道缓冲存在</strong>。这是第 8 章「往下压」在结构层面的版本。</p>
+<p>底层版：把 <code>BufReader</code> 的缓冲直接内置进 <code>File::read</code> 的默认路径，只留一个 <code>read_unbuffered</code> 给极少数场景。</p>
+</div>
+
+<div class="card">
+<h4>收益三：重复被消灭</h4>
+<p>如果同一段代码反复出现，那是一个红旗——<strong>你还没找到正确的抽象</strong>。合并（或提取）能让它只存在一处。</p>
+
+<div class="excerpt">
+<span class="src">第 9 章 · 重复是红旗</span>
+<p>如果相同的代码（或几乎相同的代码）一遍又一遍地出现，那就是一个危险信号：你没有找到正确的抽象。</p>
+</div>
+
+<p>书里的例子很贴底层：一个函数在好几个地方返回错误，每处返回前都要做同样的清理。支持 <code>goto</code> 的语言可以把清理集中到函数末尾（这是 C 里 <code>goto cleanup</code> 的正当用法），而不是复制 N 遍清理。</p>
+</div>
+
+<h2><span class="num">9.4</span>该分的三个反例</h2>
+
+<p>反过来说，书中三个「拆了反而更糟」的案例，每一个都能在真实代码里认出原型。</p>
+
+<h3>案例一：把光标和选区合并</h3>
+
+<p>看起来合理：光标总在选区的一端，它们总是一起被操作（拖动鼠标同时设定两者）。但书里的学生发现合并后<strong>更复杂</strong>：为了从合并对象里取出光标位置，得先看一个布尔值判断「光标在选区的哪一端」；而调用方仍然把两者当不同东西用。</p>
+
+<p>修好的版本什么都没合并——它引入了一个 <code>Position</code> 类，选区是两个 Position，光标是一个 Position。而且 <code>Position</code> 在项目别处也找到了用途。这就是第 6 章「有点通用」的回报。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>// 「光标和选区是一回事」——合并成一个东西
+struct CursorAndSelection {
+    Pos a, b;
+    bool has_selection;   // 选区存在吗
+    bool cursor_at_end;   // 光标在 a 还是 b？
+};
+
+// 每次取光标都要解码
+Pos cursor_pos(const CursorAndSelection&amp; s) {
+    return s.cursor_at_end ? s.b : s.a;
+}
+bool has_selection(const CursorAndSelection&amp; s) {
+    return s.has_selection;
+}</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>① 光标位置从「一个值」变成了「两个值 + 一个布尔」，每次读都要解码（认知负荷）；② <code>has_selection=false</code> 时 <code>a/b/cursor_at_end</code> 仍然存在，于是出现「无效但必须维护」的状态——正是后面第 10 章要消灭的那类特殊情况；③ 调用方仍要分别操作光标和选区，接口没变简单，只是变绕了；④ 想给 <code>Position</code> 加「跨行偏移」这类通用能力时，发现它被埋在 <code>CursorAndSelection</code> 里，别处用不上。</p>
+</div>
+</div>
+<p>改法：不做这个合并。<code>Position</code> 单独存在（它自己就有用）；选区是 <code>{Pos begin, Pos end}</code>，光标是单个 <code>Pos</code>。空选区就用 <code>begin == end</code> 表示——这样连「有没有选区」的布尔都省了（详见 L10）。</p>
+</div>
+
+<h3>案例二：给日志单独抽一个类</h3>
+
+<p>书里的学生写了一个 <code>NetworkErrorLogger</code>，每个方法只包一行 <code>logger.log(...)</code>，每个方法只被调用一次，而且都需要一大段文档注释说明参数。这是<strong>典型的「分离制造了接口」</strong>：日志本来可以直接写在检测到错误的地方。</p>
+
+<p>判断依据正是 9.2 的第四行：读调用点的人，必须跳到 logger 方法去确认「到底记了什么」；读 logger 的人，又必须回到调用点才知道它为什么被调用。互相依赖，却被拆开。</p>
+
+<h3>案例三：把撤销机制塞进文本类</h3>
+
+<p>这是本章最有教学价值的一例，因为它演示了「正确切分」是什么样子。学生的做法是让文本类管整个撤销栈——包括选区和光标这些<strong>文本类不该知道的东西</strong>。于是文本类里长出一堆尴尬的方法，并且和 UI 之间来回传递撤销信息。</p>
+
+<p>书里给的修法是把撤销切成三层，各在各的地方：</p>
+
+<table>
+  <thead><tr><th>部分</th><th>谁实现</th><th>知道什么</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>通用机制：管理动作列表、分组、调用 undo/redo</td>
+      <td><code>History</code> 类</td>
+      <td>只知道「有一串能动的东西」，不知道它们是什么</td>
+    </tr>
+    <tr>
+      <td>具体动作：怎么撤销一次插入/一次光标移动</td>
+      <td>各 <code>Action</code> 实现</td>
+      <td>只懂一种动作</td>
+    </tr>
+    <tr>
+      <td>分组策略：一次用户 undo 该撤几步</td>
+      <td>顶层 UI</td>
+      <td>懂应用行为</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>C++ 里它大概长这样——注意 <code>History</code> 完全不需要知道 <code>TextBuffer</code> 的存在：</p>
+
+<pre><code>class History {
+public:
+    struct Action {
+        virtual ~Action() = default;
+        virtual void undo() = 0;
+        virtual void redo() = 0;
+    };
+    void add(std::unique_ptr&lt;Action&gt; a);
+    void fence();        // 打一个分组边界
+    void undo();         // 撤到上一个 fence
+    void redo();
+private:
+    std::vector&lt;std::unique_ptr&lt;Action&gt;&gt; log_;
+    size_t cursor_ = 0;
+};</code></pre>
+
+<p>关键的设计决策只有一句话：<strong>把通用部分和专用部分分开，并把通用部分单独放进一个类</strong>。这句话做完，剩下的设计几乎是自动的。</p>
+
+<div class="excerpt">
+<span class="src">第 9 章 · 通用与专用的分离</span>
+<p>关键的设计决策，是把撤销机制中通用的部分与专用的部分分开，然后把通用部分单独放进一个类里。这件事一旦做到，其余的设计就顺理成章地出现了。</p>
+<p>不过要注意：把通用代码与专用代码分离，指的是<strong>同一机制</strong>内的代码。把一种机制的专用代码，和另一种机制的通用代码放在一起，通常反而是合理的——比如文本类：它实现的是通用的文本管理机制，却包含撤销相关的专用代码。那段撤销代码之所以专用，是因为它只处理文本修改的撤销；把它放进 <code>History</code> 的通用基础设施里没有意义，但放在文本类里很合理，因为它与文本功能密切相关。</p>
+</div>
+
+<p>最后那句限定非常重要，否则「通用/专用分离」会被用成教条。判据是：<strong>这段专用代码服务的是哪个机制的通用核心？</strong> 服务文本的，就留在文本类；服务撤销的，就去 <code>History</code>。</p>
+
+<h2><span class="num">9.5</span>方法该不该拆</h2>
+
+<p>同一个问题在方法尺度上的版本，而且书里对它的态度很明确：<strong>长度本身几乎从来不是拆方法的理由。</strong></p>
+
+<p>「超过 20 行就拆」这类硬规则，会造成过度拆分：每拆一次就多一个接口，而接口是要读的。如果拆出来的部分其实互相关联，读者还得在几个方法之间来回跳。</p>
+
+<p>书里承认长方法可以是好的，条件是：它由若干个相对独立的块顺序组成，而且每个块可以单独读懂。这时把块提成方法收益很小，反而可能更差——因为读者失去了「一次看到全部」的机会。</p>
+
+<p>反过来，拆分只有两种正当形态：</p>
+
+<ol>
+  <li><strong>提取子任务</strong>：父方法接口不变，子任务如果能被别处复用（也就是它相对通用），就值得提。<em>警告信号</em>：如果你读父方法时得不断跳到子方法才知道它们在干什么。</li>
+  <li><strong>把功能分成两半，各自暴露给调用方</strong>：只在原接口确实想干几件不相关的事时成立。此时每个新方法都要更简单，而且<strong>大多数调用方只需要调其中一个</strong>——如果调用方必须两个都调、还得在两个之间传状态，这次拆分就是失败的。</li>
+</ol>
+
+<div class="key">
+<p>无论拆还是合，标准都是同一个：<strong>是否产生了更清晰的抽象</strong>。方法深（接口简单、功能多）就好，长短无关。</p>
+</div>
+
+<h2><span class="num">9.6</span>「评审说不出所以然」的解药</h2>
+
+<p>痛点二在这里有最直接的答案。面对一段「看着有点碎」的代码，你不需要凭感觉，可以走下面这条判定链：</p>
+
+<ol>
+  <li><strong>这两段共享信息吗？</strong>改其中一段的假设，另一段会不会错？会 → 该在一起。</li>
+  <li><strong>它们是否<em>双向</em>一起被用？</strong>只有单向 → 该分开。</li>
+  <li><strong>不看另一段，能读懂这一段吗？</strong>不能 → 该在一起，或至少该在同一个文件里。</li>
+  <li><strong>拆开之后，是否多出了一个只为了传值的接口？</strong>是 → 合并能白赚一次简化。</li>
+  <li><strong>拆开之后，调用方是否要按顺序调多个方法、还要自己传状态？</strong>是 → 这次拆分是失败的。</li>
+</ol>
+
+<p>这五问的每一问都能指向一个具体的合并或拆分动作，所以你可以把它写进评审意见，而不是写「结构可以再优化一下」。</p>
+
+<hr>
+
+<h2><span class="num">练习</span>该合还是该分</h2>
+
+<div class="quiz">
+  <p class="q"><span class="tag">单选</span>按本章判据，下面哪一组最应当<strong>合并</strong>？</p>
+  <button data-why="哈希表在别处也独立使用，不满足「双向一起使用」，是书里明确点名该分开的例子。">A. 块缓存 与 哈希表</button>
+  <button data-ok="1" data-why="对。两者共享同一份知识——读的一方必须理解头部格式才知道请求何时结束，属于典型的「不看另一段就读不懂」。合并后连中间缓冲区那个接口都省了。">B. 从 socket 读请求 与 解析该请求</button>
+  <button data-why="缓冲可以独立存在并被别处复用（内存流、测试桩），双向关系不成立，该分开——这也正是装饰器有时合理的原因。">C. 流式 I/O 与 缓冲</button>
+  <button data-why="撤销的通用核心（动作列表、分组）与文本毫无关系，可以被别的可撤销操作复用；合并会把通用机制埋进文本类。">D. 撤销栈 与 文本缓冲区</button>
+  <p class="feedback"></p>
+</div>
+
+<h2><span class="num">练习</span>五个片段，该合该分</h2>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>错误返回前都要 <code>free(tmp); close(fd); unlock();</code>，同样的三行在函数里出现六次。</p>
+    <div class="opts">
+      <button data-ok="1">该合并到一处</button>
+      <button>该拆成新方法</button>
+      <button>保持重复</button>
+    </div>
+    <p class="note">重复是红旗。用 <code>goto cleanup</code>（C）或 RAII（C++）把它收成一处——拆出一个「清理方法」反而会引入参数传递的麻烦。</p>
+  </div>
+
+  <div class="row">
+    <p>一段 80 行方法里，前十行是「校验并规范化输入」，后面全是主逻辑；校验部分在别处也能用。</p>
+    <div class="opts">
+      <button>该合并</button>
+      <button data-ok="1">该提取子任务</button>
+      <button>该拆成两个公开方法</button>
+    </div>
+    <p class="note">这是第 9.5 节的第一种正当拆分：子任务可独立复用、可单独读懂，父方法接口不变。</p>
+  </div>
+
+  <div class="row">
+    <p><code>open_and_lock(path)</code> 被拆成 <code>open(path)</code> 和 <code>lock(fd)</code>，而每个调用点都连续调这两个、中间不做别的。</p>
+    <div class="opts">
+      <button>该提取子任务</button>
+      <button data-ok="1">该合并</button>
+      <button>保持分开</button>
+    </div>
+    <p class="note">拆开后调用方必须按顺序调两个方法并自己传 <code>fd</code>——这是「拆分失败」的典型形态。除非存在「只要 open 不要 lock」的真实调用点。</p>
+  </div>
+
+  <div class="row">
+    <p>一个 <code>Logger</code> 类，五个方法各包一行 <code>logger.log(...)</code>，每个只有一个调用点，且都需要长注释解释参数。</p>
+    <div class="opts">
+      <button>该保留，便于以后改格式</button>
+      <button>该拆得更细</button>
+      <button data-ok="1">该合并回去</button>
+    </div>
+    <p class="note">浅方法 + 单调用点 + 需要长注释 = 分离只增加了接口。日志直接写在检测到错误处，读代码的人一眼看到上下文。</p>
+  </div>
+
+  <div class="row">
+    <p><code>PageCache</code> 内部同时有页表和 LRU 淘汰策略，两者各 200 行、互不引用对方的细节。</p>
+    <div class="opts">
+      <button data-ok="1">该分开</button>
+      <button>该合并</button>
+      <button>该提取子任务</button>
+    </div>
+    <p class="note">页表与淘汰策略不共享知识、可以各自单独测试，而且淘汰策略能被别的缓存复用——「双向一起用」不成立。这是合理的拆分。</p>
+  </div>
+</div>
+
+<h2><span class="num">练习</span>设计一次切分</h2>
+
+<div class="recall">
+<p>你的 <code>Conn</code> 类现在 900 行，同时负责：① 建立/关闭连接 ② 读写字节 ③ 心跳与超时检测 ④ 指标统计 ⑤ 重连退避。请用第 9 章的判据决定怎么切，并说明每一块的归属和理由。</p>
+<p class="hint-inline">提示：先找「共享信息」和「双向一起用」，别按行数切。</p>
+<textarea placeholder="哪几块共享知识？哪几块可以单独测试？哪一块是别处也能复用的通用机制？"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p>先做关系分析，别急着画类图：</p>
+<table>
+  <thead><tr><th>块</th><th>与谁共享知识</th><th>处置</th></tr></thead>
+  <tbody>
+    <tr><td>① 建连/关闭</td><td>与 ② 共享 fd 与状态机</td><td>留在 <code>Conn</code></td></tr>
+    <tr><td>② 读写字节</td><td>与 ① 共享 fd/状态</td><td>留在 <code>Conn</code></td></tr>
+    <tr><td>③ 心跳/超时</td><td>只依赖「上次活动时间」这一个量</td><td>可以留，也可以提成 <code>IdleTimer</code>——判据是它能否单独测试</td></tr>
+    <tr><td>④ 指标统计</td><td>不共享任何内部知识，只被通知事件</td><td><strong>分出去</strong>：<code>ConnMetrics</code></td></tr>
+    <tr><td>⑤ 重连退避</td><td>与 ① 相关，但算法是通用的</td><td><strong>分出去</strong>：<code>Backoff</code>，可被任何重试场景复用</td></tr>
+  </tbody>
+</table>
+<pre><code>// 通用机制，与连接毫无关系，可单独测试
+class Backoff {
+public:
+    explicit Backoff(std::chrono::milliseconds base = std::chrono::milliseconds(100));
+    std::chrono::milliseconds next();   // 指数 + 抖动
+    void reset();
+};
+
+// 统计：只接收事件，不认识 Conn 内部
+struct ConnMetrics { std::atomic&lt;uint64_t&gt; bytes_in{}, bytes_out{}, reconnects{}; };
+
+class Conn {          // 只管 ①②③：状态机 + 字节
+public:
+    Conn(Backoff&amp; backoff, ConnMetrics&amp; m);
+    Result&lt;size_t&gt; read(std::span&lt;std::byte&gt;);
+    Result&lt;size_t&gt; write(std::span&lt;const std::byte&gt;);
+};</code></pre>
+<p>为什么这么切，对照判据：</p>
+<ul>
+  <li><code>Backoff</code> 与 <code>Conn</code> <strong>不共享信息</strong>（只共享一个毫秒数），且 <code>Backoff</code> 能被 HTTP 客户端、DB 连接池复用——不满足「双向一起用」。</li>
+  <li><code>ConnMetrics</code> 只<strong>单向</strong>被使用：<code>Conn</code> 往里写，别人读；它不需要知道 <code>Conn</code> 的任何事。</li>
+  <li>①②③ 共享状态机与 fd，<strong>分开就会产生一个专为传值而存在的接口</strong>（把 fd、状态、错误码来回传），正是 9.3「收益一」的反面。所以它们留在一起。</li>
+  <li>③ 是边界情况：如果它只是「记录最后活动时间 + 比较」，留在 <code>Conn</code> 更简单；如果它有独立的定时器线程和回调，就该出去。这里我选择留，理由是它的状态就是 <code>Conn</code> 的状态。</li>
+</ul>
+<p>一个诚实的补充：切完之后 <code>Conn</code> 从 900 行降到约 500 行，但它<strong>仍然是最大的那个类</strong>——这是对的。它承担了最重的抽象（一条有状态、会失败的连接），不该为了「每个类都小于 300 行」去硬拆。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>带走什么</h2>
+
+<p>这一章真正想扭转的是一个默认动作：默认不该是「拆」，默认该是<strong>「先问这两段是否共享知识」</strong>。拆得对的前提，是你先看见了它们之间的依赖。</p>
+
+<div class="key">
+<p><strong>贴进 code review 的话：</strong>「这两个方法共享同一份知识——读请求的人必须懂头部格式才知道请求到哪结束，所以它们是相关的。拆成两个类之后，我们多了一个只为传 buffer 而存在的接口，调用方还得按顺序调两次。能不能合并成一个 `read_request(stream) -&gt; Request`？至于退避和统计，它们跟连接内部状态无关、能单独测，那部分我赞成拆出去。」</p>
+</div>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch09.html">第 9 章 在一起更好还是分开更好（中文全译）</a> — 撤销机制那一节（<code>History</code> + <code>Action</code> + 分组策略的三层切分）值得完整读，它是全书把「通用/专用分离」讲得最清楚的地方。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">贴一段你觉得「拆得有点碎」的代码给我，最好附上调用点。我们按五问走一遍：共享知识吗、双向一起用吗、能单独读懂吗、多出的接口只为传值吗、调用方要按顺序调吗。</p>
+
+  <div class="nav-links">
+    <span><a href="0008-lower-complexity.html">← L8 · 降低复杂性</a></span>
+    <span><a href="0010-define-errors-out-of-existence.html">L10 · 通过定义规避错误 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

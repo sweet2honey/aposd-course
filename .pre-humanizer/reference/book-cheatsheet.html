@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>全书速查 · 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body class="sheet">
+<main class="page">
+
+<p class="crumb">速查 · 全书一页纸</p>
+
+<h1>全书速查</h1>
+<p class="standfirst">贴在显示器边上那张纸的完整版：15 条原则、14 面红旗、21 章索引、一条诊断流程。原件出自作者自己的《设计原则小结》与《危险信号小结》。</p>
+
+<h2>〇 · 一条主线</h2>
+<p style="font-family:var(--sans);font-size:0.95rem;">
+  复杂性是唯一的敌人 → 它有可观察的<strong>症状</strong>与可切除的<strong>成因</strong> → 对抗它需要持续<strong>投资</strong> → 投资的产物是<strong>深模块</strong> → 深模块靠<strong>信息隐藏</strong>与<strong>通用接口</strong>实现 → 剩下的全是这条线的推论：合并与拆分、规避异常、设计两次、注释、命名、一致性、显而易见、性能。
+</p>
+
+<div class="two">
+
+<div>
+<h2>一 · 15 条设计原则</h2>
+<ol>
+  <li>复杂性是逐步累积的：必须处理小事。<span class="term">2.4</span></li>
+  <li>能跑起来的代码是不够的。<span class="term">3.2</span></li>
+  <li>持续做小额的设计投资。<span class="term">3.3</span></li>
+  <li>模块应该比较深。<span class="term">4.4</span></li>
+  <li>接口要尽可能简化最常见的用法。<span class="term">4.7</span></li>
+  <li>接口简单比实现简单更重要。<span class="term">8, 9.8</span></li>
+  <li>通用模块更深入。<span class="term">6</span></li>
+  <li>通用代码与专用代码分开。<span class="term">9.4</span></li>
+  <li>不同的层要有不同的抽象。<span class="term">7</span></li>
+  <li>把复杂度降下去（默认值、内部调节）。<span class="term">8</span></li>
+  <li>通过定义让错误不存在。<span class="term">10.3</span></li>
+  <li>设计两次。<span class="term">11</span></li>
+  <li>注释描述代码中不明显的内容。<span class="term">13</span></li>
+  <li>代码应当易读，而不是易写。<span class="term">18.2</span></li>
+  <li>软件开发的增量是抽象，不是功能。<span class="term">19.2</span></li>
+</ol>
+</div>
+
+<div>
+<h2>二 · 14 面红旗</h2>
+<ol>
+  <li><strong>浅模块</strong>：接口并不比实现简单多少。</li>
+  <li><strong>信息泄漏</strong>：一个设计决策反映在多个模块里。</li>
+  <li><strong>时间分解</strong>：代码结构按执行顺序而非知识边界划分。</li>
+  <li><strong>过度暴露</strong>：为用常用功能，被迫理解罕用功能。</li>
+  <li><strong>透传方法</strong>：什么都不做，只把参数转给同签名的另一个方法。</li>
+  <li><strong>重复</strong>：同一段代码一遍又一遍出现。</li>
+  <li><strong>特殊/通用混合物</strong>：专用代码没和通用代码分开。</li>
+  <li><strong>联合方法</strong>：不理解另一个方法的实现，就读不懂这个。</li>
+  <li><strong>注释重复代码</strong>：注释里的信息，旁边的代码立刻就能看出来。</li>
+  <li><strong>实现文档污染接口</strong>：接口注释写了使用者不需要的实现细节。</li>
+  <li><strong>含糊的名字</strong>：名字太笼统，传不出有用信息。</li>
+  <li><strong>难起名字</strong>：很难给这个实体一个准确又直观的名字。</li>
+  <li><strong>难以描述</strong>：为了说清，文档必须写得很长。</li>
+  <li><strong>非显而易见的代码</strong>：行为或含义不容易看懂。</li>
+</ol>
+</div>
+
+</div>
+
+<h2>三 · 21 章索引（读什么、带走什么）</h2>
+<table>
+  <thead><tr><th>章</th><th>主题</th><th>一句话带走</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>介绍</td><td>软件没有物理定律约束，唯一硬限制是人能不能理解它。</td></tr>
+    <tr><td>2</td><td>复杂性的本质</td><td>三个症状（变更放大 / 认知负荷 / 未知的未知），两个成因（依赖 / 晦涩）。</td></tr>
+    <tr><td>3</td><td>工作代码是不够的</td><td>战术编程累积债务；战略编程掏 10–20% 时间，几个月回本。</td></tr>
+    <tr><td>4</td><td>模块应该是深的</td><td>深度 = 功能 ÷ 接口复杂度。类炎是反面。</td></tr>
+    <tr><td>5</td><td>信息隐藏（和泄漏）</td><td>藏设计决策；时间分解是最隐蔽的泄漏源。</td></tr>
+    <tr><td>6</td><td>通用模块更深入</td><td>接口要比当前需求稍微通用一点，反而更简单。</td></tr>
+    <tr><td>7</td><td>不同的层，不同的抽象</td><td>透传方法与透传变量都该消掉；上下文对象优于长参数链。</td></tr>
+    <tr><td>8</td><td>降低复杂性</td><td>好默认值让常见情况不需要配置；内部自动调节优于暴露旋钮。</td></tr>
+    <tr><td>9</td><td>在一起更好还是分开更好</td><td>共享信息 / 总是一起用 / 概念重叠 / 不看另一处读不懂 → 合并。方法长度不是拆分的理由。</td></tr>
+    <tr><td>10</td><td>通过定义规避错误</td><td>定义掉、屏蔽、聚合、崩溃——四种削减异常的方式。</td></tr>
+    <tr><td>11</td><td>设计两次</td><td>比较两个根本不同的方案，一两个小时换来明显更好的接口。</td></tr>
+    <tr><td>12</td><td>为什么要写注释</td><td>自解释是幻觉；注释是抽象的一部分，不是翻译。</td></tr>
+    <tr><td>13</td><td>注释该写什么</td><td>写不明显的：接口注释讲契约，实现注释讲「为什么」。</td></tr>
+    <tr><td>14</td><td>选择的名字</td><td>名字是抽象；精确、一致、能造出画面。</td></tr>
+    <tr><td>15</td><td>先写注释</td><td>写注释时卡住，说明设计还没想清楚。</td></tr>
+    <tr><td>16</td><td>修改现有的代码</td><td>在烂代码上保持战略，别顺势下降；增量改进优于大重构。</td></tr>
+    <tr><td>17</td><td>一致性</td><td>复用已有模式是最便宜的「显而易见」；文档化约定并强制执行。</td></tr>
+    <tr><td>18</td><td>代码应该是显而易见的</td><td>减少需要的信息 + 复用读者已有知识 + 用名字和注释补上缺的信息。</td></tr>
+    <tr><td>19</td><td>软件发展趋势</td><td>继承、敏捷、单测、TDD、模式、getter/setter：都拿这把尺子量一遍。</td></tr>
+    <tr><td>20</td><td>设计性能</td><td>先让设计简单，再谈性能；度量为准；围绕关键路径设计。</td></tr>
+    <tr><td>21</td><td>结论</td><td>好设计不免费，但回报快；每位工程师持续做小额投资。</td></tr>
+  </tbody>
+</table>
+
+<h2>四 · 诊断流程（拿到一段代码用这个）</h2>
+<div class="diag">
+  <p><strong>① 它藏了什么？</strong><br>接口之后能说出一件使用者不必知道的设计决策吗？说不出来 → 浅模块。</p>
+  <p><strong>② 哪条知识出现在两个地方？</strong><br>文件格式、单位、协议细节、配置语义。找到了 → 信息泄漏 / 时间分解。</p>
+  <p><strong>③ 改一处要动几个文件？</strong><br>超过一个，先找那条被泄漏的知识，而不是加一层转发。</p>
+  <p><strong>④ 调用者必须按顺序调两次吗？</strong><br>是 → 接口没做完，应该合并成一个调用。</p>
+  <p><strong>⑤ 这里有几种异常？</strong><br>能把它们定义掉、屏蔽在低层、或聚合到一处吗？</p>
+  <p><strong>⑥ 名字和注释说清了「不明显」的部分吗？</strong><br>读者需要的信息，代码给了吗？</p>
+</div>
+
+<h2>五 · 常见误用</h2>
+<div class="two">
+<ul>
+  <li><strong>「复杂性 = 代码量大」。</strong>错。行数多但接口简单的实现可以很清晰。</li>
+  <li><strong>「private 就是封装」。</strong>错。getter/setter 把私有变成公开。</li>
+  <li><strong>「封装越多越好」。</strong>错。忽略重要细节的抽象是坏抽象；不同用法真需要不同配置时必须暴露。</li>
+  <li><strong>「深度 = 面积大」。</strong>错。功能多但接口臃肿的是<em>大而浅</em>。</li>
+</ul>
+<ul>
+  <li><strong>「先战术，回头重构」。</strong>滑坡。越拖越大，越大越不敢动。</li>
+  <li><strong>「有重复就必须合并」。</strong>不一定——先问这两处是不是同<em>一个</em>知识。</li>
+  <li><strong>「方法超过 20 行就该拆」。</strong>错。长度本身几乎从不是理由；拆出浅方法更糟。</li>
+  <li><strong>「抛异常能抓 bug」。</strong>多半是。抛异常增加的代码本身就是 bug 温床。</li>
+</ul>
+</div>
+
+<h2>六 · 一句话带走</h2>
+<div class="key">
+<p>每次改动留 15 分钟问三句：<strong>我刚刚让什么知识泄漏到了第二个地方？这个模块变深了还是变浅了？现在读这段代码的人，缺什么信息？</strong></p>
+</div>
+
+<div class="foot">
+  <p>21 课全部入口见 <a href="../index.html">课程目录</a>；术语定义见 <a href="glossary.html">术语表</a>；只要上半部地基看 <a href="ch1-5-cheatsheet.html">前五章速查</a>。</p>
+  <p>原文：<a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/">《软件设计的哲学》中文全译</a>（本页的两份清单出自书末《总结》）。</p>
+</div>
+
+</main>
+</body>
+</html>

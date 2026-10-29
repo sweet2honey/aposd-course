@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L20 · 设计性能 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 20 章 · 课程 20 / 21</p>
+
+<h1>设计性能</h1>
+<p class="standfirst">这一章反直觉的地方在于：它说性能问题和<a class="gl" href="../reference/glossary.html#complexity">复杂性</a><span class="en-inl">complexity</span>问题有同一个解。删掉<a class="gl" href="../reference/glossary.html#special-case">特殊情况</a><span class="en-inl">special case</span>，代码更快，也更好读。而唯一能信的判断依据是测量，不是直觉。</p>
+
+<h2><span class="num">20.1</span>两个极端都不行</h2>
+
+<p>作者先砍掉两个常见立场。</p>
+
+<p><strong>极端一：逐条语句优化。</strong> 开发会变慢，会制造大量不必要的复杂度，而且关键在这里：<em>大部分「优化」对性能没有帮助</em>。你花了两小时把 <code>std::vector</code> 换成裸数组，测出来快了 0.3%，因为热点在别处。</p>
+
+<p><strong>极端二：完全不管性能。</strong> 结果是一地的严重低效，散落在整个代码库。作者形容为「<a class="gl" href="../reference/glossary.html#death-by-a-thousand-cuts">千刀万剐</a><span class="en-inl">death by a thousand cuts</span>」：每一刀都不大，但没有一处单独改进能带来明显效果。系统比它该有的速度慢五到十倍，而且事后极难修，因为没有可以下手的单点。</p>
+
+<p>他推荐的中间路线有个准确的名字：<strong>利用性能的基本知识，选出「天然高效」的设计</strong>。注意这不是折中主义，这是一条明确的判据——在几个<em>同样干净</em>的设计里，挑那个符合硬件事实的。你不需要提前优化，但你需要知道什么东西天生贵。</p>
+
+<table>
+  <thead><tr><th>操作</th><th>大致代价</th><th>折算成指令数</th></tr></thead>
+  <tbody>
+    <tr><td>L1 缓存命中</td><td>~1 ns</td><td>几条</td></tr>
+    <tr><td>DRAM 取数（<a class="gl" href="../reference/glossary.html#cache-miss">缓存缺失</a><span class="en-inl">cache miss</span>）</td><td>~60–100 ns</td><td>数百条</td></tr>
+    <tr><td>闪存 I/O</td><td>10–100 µs</td><td>数万条</td></tr>
+    <tr><td>同一机房内网络往返</td><td>10–50 µs</td><td>数万条</td></tr>
+    <tr><td>磁盘 I/O（机械）</td><td>5–10 ms</td><td>数百万条</td></tr>
+    <tr><td>跨广域网往返</td><td>10–100 ms</td><td>上千万条</td></tr>
+  </tbody>
+</table>
+
+<p>这张表你不用背，但要内化一个比例感：<strong>一次缓存缺失 ≈ 数百条指令；一次磁盘 I/O ≈ 几百万条指令。</strong> 这个比例决定了绝大多数设计决策。</p>
+
+<p>作者还点了一件在本文读者这儿格外重要的事：<strong>动态内存分配</strong>（<code>malloc</code> / <code>new</code> / <code>Box</code> / <code>Vec</code> 的扩容）自带大量开销，不只是分配本身，还包括释放、以及 C++ 里那个更隐蔽的敌人——释放时机。它把「一次分配」变成「一次分配 + 未来某处一次释放」，后者往往不在<a class="gl" href="../reference/glossary.html#critical-path">关键路径</a><span class="en-inl">critical path</span>上，却决定了你能不能把数据放在缓存里。</p>
+
+<div class="excerpt">
+<span class="src">第 20 章 · 天然高效的选择</span>
+<p>一旦你对什么是昂贵、什么是便宜有了大致了解，就可以用它尽可能选择便宜的操作。在很多情况下，更高效的方法和更慢的方法一样简单。例如，存储大量需要按 key 查找的对象时，哈希表和有序映射都是现成的、都好用，但哈希表可以轻松快 5–10 倍。因此除非你确实需要有序性，否则应该用哈希表。再比如在 C 或 C++ 中分配结构体数组：一种做法是数组里存指针，于是你得先分配数组、再逐个分配结构体；把结构体直接放在数组里则高效得多，因为你只需要分配一大块内存。</p>
+</div>
+
+<p>第二个例子值得停一下，因为它是<strong>设计层面的</strong>改动，不是优化器能替你做的那种：<code>std::vector&lt;Foo*&gt;</code> 与 <code>std::vector&lt;Foo&gt;</code> 的差别不是「快一点点」。前者每个元素一次独立分配，遍历时每个 <code>Foo</code> 可能落在不同页、不同缓存行，还有指针本身的间接访问；后者是一整块连续内存，遍历是顺序的，预取器能工作，析构是一次 <code>free</code> 而不是 N 次。</p>
+
+<p>这就是「天然高效」的含义：<strong>在写第一行代码时选对布局，代价是零；写完再换，代价是重写调用方。</strong></p>
+
+<div class="key">
+<p><strong>一个判断句：</strong>如果两个设计一样干净，选那个分配更少、访问更连续、跨层更少的。这不是提前优化，这是免费的性能。</p>
+</div>
+
+<h2><span class="num">20.2</span>什么时候该为性能加复杂度</h2>
+
+<p>作者没回避困难的那一半：有时候高效的写法<em>确实</em>更复杂。他给了三档判断：</p>
+
+<ol>
+  <li><strong>复杂度只加了一点，而且被藏住了</strong>（不影响任何接口）→ 可能值得。括号里那句提醒很重要：<em>但复杂度是会累积的</em>。一次「就一点点」，十次就是一坨。</li>
+  <li><strong>显著增加实现复杂度，或者让接口变复杂</strong> → 从简单版本开始，等性能真的成问题再优化。</li>
+  <li><strong>你有明确证据表明性能在这个场景很重要</strong> → 立刻做高效版本。</li>
+</ol>
+
+<p>第三档他在 RAMCloud 里亲身示范过：为了极致延迟，他们让网络绕过内核，直接和网卡通信。这是一个又贵又复杂的决定——但他补了一句关键的：<strong>把这个大问题一次性「解决」掉之后，系统其余部分反而可以做简单设计。</strong></p>
+
+<p>这是本章最容易被漏掉的一条设计智慧：<strong>复杂度要花在能买来简单的地方。</strong> 不是均匀分布，而是集中投在一个会传染的瓶颈上，然后把省下的简单度分给其它所有<a class="gl" href="../reference/glossary.html#module">模块</a><span class="en-inl">module</span>。反过来，最常见的错误是把复杂度均匀撒开——每个模块都「稍微优化一下」，结果每个模块都难读，谁也没快多少。</p>
+
+<div class="excerpt">
+<span class="src">第 20 章 · 简单代码往往更快</span>
+<p>通常，简单的代码往往比复杂的代码运行得更快。如果你已经把特殊情况和异常情况定义掉了，那么就不需要代码去检查它们，系统自然会跑得更快。深层类比浅层类更高效，因为它们为每次方法调用完成了更多工作；浅层类导致更多的层间穿越，而每次穿越都有开销。</p>
+</div>
+
+<p>这句的结构值得展开：它<em>不是</em>「简单所以快」这种鸡汤，而是给了机制——<strong>特殊情况就是关键路径上的分支，分支就是代码，代码就是要执行的指令。</strong></p>
+
+<p>于是第 7、8 章的两个结论在这里获得了新的理由：</p>
+
+<ul>
+  <li><strong>减少层数</strong>：每层穿越都有开销；如果三层签名一样、做的事也一样，那两层是纯损耗（第 7 章叫它 pass-through method）。</li>
+  <li><strong>消除特殊情况</strong>（第 8 章）：每消除一个「如果……就特殊处理」，关键路径就少一个测试。</li>
+</ul>
+
+<p>也就是说，<strong>简洁不只是审美，它是性能的因。</strong> 这句话是本章的核心。</p>
+
+<h2><span class="num">20.3</span>度量，而不是猜</h2>
+
+<p>如果系统还是太慢，作者的警告是全章语气最重的一段：</p>
+
+<blockquote>
+<p>不要根据直觉匆忙做性能调整！程序员对性能的直觉是不可靠的——即使对有经验的开发者也是如此。如果你开始凭直觉修改，你会把时间浪费在实际上没有提高性能的事情上，并且在这个过程中让系统变得更复杂。</p>
+<cite>第 20 章 · 修改前的度量</cite>
+</blockquote>
+
+<p>为什么直觉不可靠？因为现代硬件的性能模型和人的心理模型差得太远。你觉得贵的可能是免费的（分支预测良好的循环），你觉得免费的可能是最贵的（一次跨 NUMA 节点的访问、一次 false sharing 的缓存行弹跳、一次隐式的 <code>std::string</code> 拷贝）。</p>
+
+<p>度量有两个目的，作者说得很清楚，两个都不能省：</p>
+
+<div class="grid2">
+<div class="card">
+<h4>目的 ① 定位</h4>
+<p>找出系统当前把大量时间花在<em>哪几个非常具体的地方</em>。只测顶层总耗时不够——它只告诉你「慢」，不告诉你「为什么慢」。</p>
+</div>
+<div class="card">
+<h4>目的 ② 基线</h4>
+<p>留下一份改动前的数字，改完再测。如果改动没有带来可测量的差异，<strong>就回滚它</strong>——除非它同时让代码变简单了。</p>
+</div>
+</div>
+
+<p>第二点里那句「除非它同时让系统更简单」，是全章最容易被忽略的收尾：<strong>复杂度不是白拿的，它必须换来可测量的速度。</strong> 一个让代码更绕、但快不起来的改动，是纯亏损。</p>
+
+<div class="card">
+<h4>对底层读者的具体做法</h4>
+<p><code>perf stat</code> 先看四个数：<code>cycles</code>、<code>instructions</code>、<code>cache-misses</code>、<code>branch-misses</code>。IPC 低 + cache-miss 高 = 内存布局问题，不是算法问题；branch-miss 高 = 数据分布或分支形态问题。</p>
+<p>然后 <code>perf record -g</code> 找火焰图的<strong>最宽的那一片</strong>，不要找最上面的函数。再往下，用 <code>perf annotate</code> 看那几行的汇编。</p>
+<p>最后一定要有<strong><a class="gl" href="../reference/glossary.html#microbenchmark">微基准</a><span class="en-inl">microbenchmark</span></strong>：书里说他们在 RAMCloud 花几天做了一个框架，之后加一个新微基准只要五到十分钟，于是攒下了几十个。这是「把度量变成习惯」的关键——门槛足够低，你才会真的去测。</p>
+</div>
+
+<h2><span class="num">20.4</span>围绕关键路径设计</h2>
+
+<p>假设你已经测出来了：确实有一段代码慢到影响全局。最好的解法是<strong><a class="gl" href="../reference/glossary.html#radical-fix">根本性修正</a><span class="en-inl">radical fix</span></strong>——引入缓存、换算法（平衡树换列表）、换通信机制。这类修正可以用前面各章的设计技术干净地实现。</p>
+
+<p>但有时候没有根本解法。这时才进入本章的核心技术：<strong>围绕关键路径重新设计代码</strong>。作者明确说这是「不得已的方法」，不该经常发生。</p>
+
+<p>方法分三步：</p>
+
+<ol>
+  <li><strong>写下<a class="gl" href="../reference/glossary.html#ideal-code">理想代码</a><span class="en-inl">ideal code</span>。</strong> 忘掉现有结构，问：在最常见的情况下，完成任务<em>最少</em>需要执行哪些代码？把相关代码想象成全在一个函数里；只考虑关键路径需要的数据，并假设数据结构可以随便挑（比如把多个变量合成一个值）。这段代码可能和现有类结构冲突，可能不现实，但它是一个目标：它代表这段逻辑可能达到的最简、最快形态。</li>
+  <li><strong>找一个尽量接近理想、同时保持干净结构的新设计。</strong> 前面各章的技术都能用，但要让理想代码的<em>主体</em>保持完整。为了抽象干净而多加一个方法调用是可以的——比如走一次通用哈希表。</li>
+  <li><strong>把特殊情况从关键路径上赶走。</strong> 这是最有效的一步。</li>
+</ol>
+
+<p>第三步值得单独说。慢代码通常慢在「它必须处理各种情况」，而代码结构是为了统一处理这些情况而搭的。每个特殊情况都以一个条件判断或一次方法调用的形式加在关键路径上，每加一个就慢一点。</p>
+
+<div class="key">
+<p><strong>目标形态：</strong>开头<strong>一个</strong>测试，一次判定排除所有特殊情况；正常情况通过后直接跑关键路径，中间不再有任何检查；测试失败才分支到路径之外的慢速处理。<br>
+<strong>特殊情况的代码不需要快，它需要简单。</strong></p>
+</div>
+
+<p>这条建议在底层代码里几乎处处适用：解析器的「有没有引号/转义/嵌套」、序列化的「有没有 null 字段」、网络栈的「是不是最后一个分片」——都可以压成一次前置判断 + 一条快车道。</p>
+
+<h2><span class="num">20.5</span>RAMCloud Buffer：2 倍速度 + 20% 更少代码</h2>
+
+<p>书的压轴例子很值得完整走一遍，因为它是<strong>「性能优化最终让代码变小」</strong>的实证。</p>
+
+<p><code>Buffer</code> 管理变长字节数组（RPC 的请求和响应）。为了减少拷贝和分配，它把底层存储切成多个不连续的 chunk：<strong>外部 chunk</strong> 的存储归调用方所有（大块，避免拷贝），<strong>内部 chunk</strong> 归 Buffer 所有（小块，拷贝成本可忽略）。每个 Buffer 还自带一小块内联空间。所以一个 Buffer 看起来是线性字节数组，实际是 chunk 列表。</p>
+
+<p>最热的操作是「用内部 chunk 追加一小段数据」——每个 RPC 至少创建四个 Buffer，每次都在做这件事。旧实现有两个毛病：</p>
+
+<ol>
+  <li><strong>关键路径上逐个检查了 6 个不同条件。</strong> 而且它的逻辑是「先不管最后一个 chunk，分配新空间，然后检查这片空间是不是刚好和最后一块相邻，相邻就合并」——这个「先分配再合并」的顺序本身又制造了额外检查。</li>
+  <li><strong>层数太多而且都是浅的。</strong> <code>Buffer::alloc</code> → <code>allocateAppend</code> → <code>Allocation::allocateAppend</code>，三个方法<em>签名相同、抽象基本相同</em>。作者点名这是<a class="gl" href="../reference/glossary.html#red-flag">危险信号</a><span class="en-inl">red flag</span>：<code>allocateAppend</code> 几乎是个 pass-through method，它唯一的作用是「需要时新建一个 allocation」。每次调用要花时间，而且每个调用的返回值都要被调用方检查，于是又多出特殊情况。</li>
+</ol>
+
+<p>新设计做了三件事：</p>
+
+<ul>
+  <li><strong>整条路径收进一个方法</strong>，用<strong>一个</strong>测试排除全部特殊情况。</li>
+  <li><strong>引入一个实例变量</strong> <code>extraAppendBytes</code>：记录最后一个 chunk 之后紧邻的可用空间。如果没有空间、或最后一个 chunk 不是内部的、或 Buffer 里根本没有 chunk，它就是 0。</li>
+  <li><strong>消除浅层抽象</strong>，让内部结构更深。</li>
+</ul>
+
+<p>这个 <code>extraAppendBytes</code> 是本章最漂亮的一手，值得说透：它把一个「每次都要现算的、涉及多个 chunk 的判断」，<strong>换成了一个读一个整数</strong>。代价是写入路径上要维护它。这就是经典的<strong>用空间/维护成本换取关键路径上的时间</strong>，而且它让代码<em>更简单</em>：判断从「遍历/检查若干条件」变成「<code>if (extraAppendBytes &gt;= n)</code>」。</p>
+
+<p>结果：追加 1 字节的耗时从 <strong>8.8 ns 降到 4.75 ns</strong>（约 2 倍）。「新建 + 追加小块 + 销毁」从 24 ns 降到 12 ns。同时类<strong>小了 20%</strong>（1476 行 vs 1886 行）。</p>
+
+<p>有一处取舍作者交代得很诚实：本可以不维护 <code>totalLength</code>、需要时重算，但对 chunk 很多的大 Buffer 太贵，而「取总长度」本身也是常见操作。所以他们选择给 <code>alloc</code> 加一点开销，换取长度随时可读。<strong>这是性能设计里最典型的形态：没有免费的午餐，只有标注清楚的取舍。</strong></p>
+
+<div class="anti">
+<h4>反例 · 关键路径上的特殊情况</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>size_t write(Span src) {
+    size_t n = 0;
+    for (auto b : chunks_) {        // 遍历所有 chunk
+        if (!b.internal) {          // 特殊情况 1
+            if (src.empty()) break;
+            n += b.append_external(src);
+            continue;
+        }
+        if (b.free() == 0) {        // 特殊情况 2
+            if (!b.has_next()) {    // 特殊情况 3
+                chunks_.push_back(alloc(4096));
+            }
+            continue;
+        }
+        if (b.free() &lt; src.size()) {// 特殊情况 4
+            n += b.append_partial(src);
+            continue;
+        }
+        n += b.append_all(src);     // 真正的热路径
+    }
+    return n;
+}</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>热路径（最后一行）被埋在<em>三层嵌套</em>和<em>四个分支</em>后面。绝大多数调用是「最后一个 chunk 有足够空间」——这是最常见的情况，却要付四次判断的代价。</p>
+<p><code>chunks_</code> 是一个 <code>std::vector</code>，遍历它意味着读堆上不连续的节点，每次都可能缓存缺失。而热路径需要的其实只是<strong>最后一个 chunk</strong>，前面的全部无关。</p>
+<p>更糟的是可读性：这段代码让读者以为「遍历所有 chunk」是必要的，而实际上常见情况一次都不需要遍历。代码结构在说谎。</p>
+</div>
+</div>
+<p>改法：把「最后一个 chunk 还有多少空间」缓存进一个整数成员，热路径压成 <code>if (tail_free &gt;= n)</code> 一次判断直送。慢路径（追加大块、需要新 chunk、跨 chunk 拼接）挪到一个单独的 <code>write_slow()</code> 里，写得笨一点无所谓——它的调用频率低两个数量级。</p>
+</div>
+
+<h2><span class="num">20.6</span>可执行清单</h2>
+
+<p>把本章压成一张能贴在工位上的表。左边是手段，右边是它为什么有效——<strong>说不出机制的手段不要用</strong>。</p>
+
+<table>
+  <thead><tr><th>手段</th><th>机制</th><th>注意</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>批处理</strong></td>
+      <td>把 N 次固定开销摊到 1 次：1 次 syscall、1 次网络往返、1 次锁获取</td>
+      <td>延迟会变差。交互式路径上别批。</td>
+    </tr>
+    <tr>
+      <td><strong>消除不必要的工作</strong></td>
+      <td>最常见也最划算。先问「这一步能不能不做」，再问「能不能做少一点」</td>
+      <td>包括：多余的拷贝、多余的校验、多余的格式化、<code>to_string</code> 后再 parse 回去</td>
+    </tr>
+    <tr>
+      <td><strong>缓存</strong></td>
+      <td>用内存换时间。根本性修正的第一候选</td>
+      <td>必须回答：失效策略是什么？内存上限是多少？冷启动呢？</td>
+    </tr>
+    <tr>
+      <td><strong>内存布局</strong></td>
+      <td>连续 &gt; 指针链；AoS → SoA；热冷字段分离</td>
+      <td>一次缓存缺失 = 数百条指令，这是最大的单点收益</td>
+    </tr>
+    <tr>
+      <td><strong>并发</strong></td>
+      <td>把等待换成并行</td>
+      <td>锁竞争、false sharing、跨核同步会让它变成负数。先测再上</td>
+    </tr>
+    <tr>
+      <td><strong>零拷贝 / mmap</strong></td>
+      <td>去掉「读进来再写出去」这条路径</td>
+      <td>所有权和生命周期立刻变复杂。这是该花复杂度的地方</td>
+    </tr>
+    <tr>
+      <td><strong>SIMD</strong></td>
+      <td>一条指令处理多个数据</td>
+      <td>通常是最后一步。如果布局不连续，向量化根本无从下手——先回到上一行</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>顺序很重要：<strong>消除工作 &gt; 布局 &gt; 缓存 &gt; 批处理 &gt; 并发 &gt; SIMD</strong>。上面的每一条都比下面一条更少引入复杂度。倒着做的人，最后会得到一个又慢又难读的系统。</p>
+
+<div class="card">
+<h4>设计接口时就把性能边界写进去</h4>
+<p>这是本章没展开、但对本文读者最实用的一条：<strong>性能约束属于接口文档。</strong></p>
+<ul>
+  <li><code>push_back</code> 摊还 O(1)——调用方可以放心循环；没有这句话，别人会自己维护一个链表。</li>
+  <li><code>find()</code> 是 O(log n) 还是 O(n)？如果实现是线性的，调用方在热循环里用它就是灾难，而他看不出。</li>
+  <li>这个函数会拷贝输入，还是接管所有权？（<code>const&amp;</code> vs <code>&amp;&amp;</code> vs <code>T*</code>）</li>
+  <li>这个调用会不会阻塞、会不会 syscall、会不会拿全局锁？</li>
+  <li>并发安全吗？在哪个粒度上安全？</li>
+</ul>
+<p>不写清楚，调用方就只能靠猜；猜错的那次会在生产环境里被发现。</p>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>判断该不该动</h2>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>一个 <code>std::vector&lt;Record*&gt;</code>，Records 是几百万个固定大小的结构体，遍历时 <code>perf</code> 显示 cache-miss 极高、IPC 很低，算法本身是线性的。</p>
+    <div class="opts">
+      <button>该上 SIMD</button>
+      <button data-ok="1">该改内存布局</button>
+      <button>该加多线程</button>
+    </div>
+    <p class="note">IPC 低 + cache-miss 高是布局问题的签名，不是算法问题。改成 <code>std::vector&lt;Record&gt;</code>（或 SoA 抽热字段）是「天然高效」的改动，而且往往<strong>同时让代码更短</strong>。SIMD 在散乱内存上无从下手。</p>
+  </div>
+
+  <div class="row">
+    <p>某函数很慢，你把一个 <code>std::map</code> 换成了排序后的 <code>std::vector</code> 加二分，测下来快了 3%，但代码多了 40 行、多了一个「插入时保持有序」的约定。</p>
+    <div class="opts">
+      <button data-ok="1">回滚这次改动</button>
+      <button>保留，快就是快</button>
+      <button>再加一层封装</button>
+    </div>
+    <p class="note">书里的判据：改动没有带来可测量的差异就撤销它，除非它同时让系统更简单。3% 在噪声边缘，而代价是 40 行 + 一条需要维护的不变式。<strong>复杂度必须换来速度</strong>。</p>
+  </div>
+
+  <div class="row">
+    <p>一个热路径函数开头有 8 个 <code>if</code> 分别处理 null、空数组、单元素、超长、对齐、只读、跨页、错误码；99.9% 的调用都是「正常、非空、对齐」。</p>
+    <div class="opts">
+      <button>拆成 8 个小函数</button>
+      <button>把 8 个判断合并成位掩码</button>
+      <button data-ok="1">一个前置测试 + 快车道</button>
+    </div>
+    <p class="note">这正是本章的核心技术。把 8 个条件压成<strong>一次</strong>判定（比如一个掩码/一个标志位/一个长度比较），通过后直接跑无分支的关键路径；失败则跳到慢速的完整处理。特殊情况不需要快，需要简单。</p>
+  </div>
+
+  <div class="row">
+    <p>你怀疑 <code>std::string</code> 的拼接在打日志时拖慢了服务，于是把三处拼接改成手写 buffer。上线后 p99 没变。</p>
+    <div class="opts">
+      <button>继续优化另外七处拼接</button>
+      <button data-ok="1">回滚，先测热点</button>
+      <button>改成异步日志</button>
+    </div>
+    <p class="note">「程序员对性能的直觉是不可靠的」。p99 没变说明它不是瓶颈。正确顺序：先 <code>perf record</code> 找最宽的那片，再动手；否则你只是在给代码加复杂度。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>设计理想代码</h2>
+
+<div class="recall">
+<p>一个日志写入器：<code>log(level, fmt, ...)</code> 先把格式化成 <code>std::string</code>，加时间戳、线程 id、文件名行号，然后 <code>write()</code> 到文件，落盘前 <code>fflush</code>。压测发现它占了请求延迟的 30%。用 20.4 的三步法，你会怎么重做？</p>
+<p class="hint-inline">提示：先写「理想代码」，别管现在长什么样。</p>
+<textarea placeholder="最常见的情况下，最少需要执行哪些代码？"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p><strong>第一步，理想代码：</strong>最常见的情况是「一个普通级别的日志」。理想情况下最少需要做什么？——把字节追加进一块已经预分配好的内存，然后<em>什么都不做</em>。不格式化（格式串可以在热路径外编译一次）、不分配（复用线程本地缓冲）、不 <code>write</code>、不 <code>fflush</code>。</p>
+<p><strong>第二步，靠近理想但保持干净：</strong></p>
+<ul>
+  <li>把「格式化」变成一个可预编译的格式对象，而不是每次 <code>vsnprintf</code> 解析格式串；</li>
+  <li>每个线程一个按值持有的 <code>LineBuf</code>（UTF-8 字节数组 + 长度），接口只有 <code>append(bytes)</code> 和 <code>flush_if_needed()</code>；</li>
+  <li><code>write</code> 从热路径移走，交给后台线程或缓冲区满时批量落盘（<strong>批处理</strong>：N 次 syscall 摊成 1 次）。</li>
+</ul>
+<p><strong>第三步，赶走特殊情况：</strong>热路径开头的<strong>一个</strong>判断——<code>if (level &lt; min_level) return;</code> 加上 <code>if (buf.free() &lt; needed) buf.flush();</code>。剩下的（时间戳格式化、文件名解析、异常路径、落盘失败重试）全部挪到慢路径。注意时间戳也不需要每个日志都格式化——缓一个「当前秒的字符串」，秒变了才重算。</p>
+<p><strong>取舍要写清楚：</strong>崩溃时会丢最后一批日志。这个代价必须写进接口文档，因为它改变了调用方能依赖的语义。</p>
+<p>最后，<strong>先测再改</strong>：确认 30% 里有多少是格式化、多少是 syscall、多少是锁竞争。三者对应的改法完全不同——如果是锁竞争，上面这套做完可能一点没快。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>这一章真正说了什么</h2>
+
+<p>乍看这是一章关于性能的。其实它是第 8 章「降低复杂度」的续集，只不过换了个判据：<strong>性能是复杂度的显微镜。</strong></p>
+
+<p>一段代码里如果堆着五个特殊情况、三层浅转发、四处重复计算，那么它既难读、也慢。反过来，把关键路径抽出来、把特殊情况赶走、把浅层合并——你同时得到了更短的代码和更快的代码。作者的原话是这一章最重要的一句：</p>
+
+<div class="excerpt">
+<span class="src">第 20 章 · 结论</span>
+<p>本章最重要的总体经验是：简洁的设计和高性能是兼容的。重写 Buffer 类把它的性能提高了 2 倍，同时简化了设计、把代码量减少了 20%。复杂的代码往往慢，因为它做了无关或冗余的工作。另一方面，如果你写出干净、简单的代码，系统可能本来就足够快，你从一开始就不必操心性能。在少数确实需要优化性能的场合，关键仍然是简化：找到对性能最重要的关键路径，让它们尽可能简单。</p>
+</div>
+
+<div class="key">
+<p><strong>一句能贴进评审的话：</strong>「这条路径上检查了六个特殊情况。能不能压成一个前置判断，正常情况直送，其余全挪到 <code>*_slow()</code>？——更快，而且读起来更短。」</p>
+</div>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch20.html">第 20 章 设计性能（中文全译）</a> — 图 20.2 / 20.3 是旧代码和新代码的完整对照，比本文的摘述更有说服力，值得逐行读。</p>
+  <p><a href="https://norvig.com/21-days.html">Teach Yourself Programming in Ten Years</a> — 不是本书资源，但里面关于「测量而非猜测」的段落可以和 20.3 对着看。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">贴一段你怀疑「慢但不知道为什么」的代码，附上 <code>perf stat</code> 的四个数字（cycles / instructions / cache-misses / branch-misses）。我们先用数据判断它是布局问题、分支问题还是算法问题，再决定要不要动它。</p>
+
+  <div class="nav-links">
+    <span><a href="0019-trends.html">← L19 · 软件发展趋势</a></span>
+    <span><a href="0021-conclusion.html">L21 · 结论 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

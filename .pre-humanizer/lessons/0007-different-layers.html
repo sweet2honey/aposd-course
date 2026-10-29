@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L7 · 不同的层，不同的抽象 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 7 章 · 课程 7 / 21</p>
+
+<h1>不同的层，不同的抽象</h1>
+<p class="standfirst">相邻两层如果提供同样的抽象，中间那层几乎肯定是白拿工资的。这一章给你一把尺子，用来量自己手上那些「拆了但又没拆干净」的模块。</p>
+
+<h2><span class="num">7.1</span>一个正常的系统，抽象在每一层都变</h2>
+
+<p>先说清楚「正常」长什么样，不然「异常」不好认。软件系统是分层的：上层用下层提供的能力。在健康的系统里，<strong>每一层对上下两层提供的抽象都不一样</strong>——你顺着一次调用往下走，概念会一层层换掉。</p>
+
+<p>书里的两个例子，都是底层读者熟悉的：</p>
+
+<div class="grid2">
+<div class="card">
+<h4>文件系统</h4>
+<p>最上层：<strong>文件</strong>——变长字节数组，可以读写任意变长区间。</p>
+<p>下一层：<strong>块缓存</strong>——固定大小的磁盘块，常访问的块常驻内存。</p>
+<p>最底层：<strong>设备驱动</strong>——在存储设备与内存之间搬运块。</p>
+</div>
+<div class="card">
+<h4>TCP</h4>
+<p>最上层：<strong>可靠字节流</strong>——从一台机器到另一台，字节不会丢、不会乱序。</p>
+<p>下一层：<strong>尽力而为的数据包</strong>——大概率送达，可能丢、可能乱序。</p>
+</div>
+</div>
+
+<p>注意这两个例子里「抽象变了」是什么意思：不是名字变了，而是<strong>这一层替上层消化掉了一整类麻烦</strong>。块缓存消化了「设备很慢」；TCP 消化了「网络会丢包」。上层不需要知道这些麻烦的存在——这正是第 5 章的信息隐藏。</p>
+
+<p>反过来读：如果相邻两层的抽象<em>一样</em>，那就意味着中间那层什么都没消化。它凭什么存在？</p>
+
+<h2><span class="num">7.2</span>透传方法：最典型的病症</h2>
+
+<p>书里给了一个定义，值得背下来：</p>
+
+<div class="excerpt">
+<span class="src">第 7 章 · 透传方法</span>
+<p>透传方法（pass-through method）是指除了调用另一个方法之外几乎不做任何事的方法，而被调用的方法签名与它相似甚至相同。</p>
+<p>透传方法让类变浅：它们增加了类的接口复杂度，却没有增加系统的整体功能。它们还在类之间制造依赖：如果下层方法的签名变了，上层那个透传方法必须跟着改。</p>
+</div>
+
+<p>书里的例子是个学生项目：<code>TextDocument</code> 的 15 个公开方法里有 13 个是透传。换成 C++ 就是下面这样——你在真实项目里一定见过这种类，甚至可能正在维护它：</p>
+
+<pre><code>// 只负责转发的壳
+class PageCache {
+public:
+    ssize_t read(off_t off, void* buf, size_t n) {
+        return dev_.read(off, buf, n);          // 一行转发
+    }
+    ssize_t write(off_t off, const void* buf, size_t n) {
+        return dev_.write(off, buf, n);         // 一行转发
+    }
+    int  fsync()        { return dev_.fsync(); }
+    bool is_open() const { return dev_.is_open(); }
+    int  fd() const     { return dev_.fd(); }
+private:
+    BlockDevice dev_;
+};</code></pre>
+
+<p>这个 <code>PageCache</code> 里有缓存吗？没有。它的接口和 <code>BlockDevice</code> 完全同构，所以它唯一的效果是：</p>
+
+<ul>
+  <li>调用方多记一套名字（认知负荷）；</li>
+  <li><code>BlockDevice::read</code> 改签名时，这里必须跟着改（变更放大，痛点一）；</li>
+  <li>读代码的人以为这里有缓存，直到点进去才发现被耍了（晦涩，且是「未知的未知」）。</li>
+</ul>
+
+<div class="key">
+<p>透传方法的诊断价值在于它<strong>几乎不可能是故意的</strong>。没人会坐下来设计一个什么都不做的类；它总是某个中间产物的残骸——一开始确实做了点事，后来逻辑搬走了，壳留下了。</p>
+</div>
+
+<h3>但要小心：签名相同不一定是透传</h3>
+
+<p>书里特意划了三种合法情况，否则这条规则会被用成暴政：</p>
+
+<table>
+  <thead><tr><th>情况</th><th>为什么合法</th><th>底层例子</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>调度器</strong>（dispatcher）</td>
+      <td>它用自己的参数在多个实现里<em>选一个</em>，选择本身就是功能</td>
+      <td>HTTP 路由、io_uring 的 opcode 分派、syscall 表</td>
+    </tr>
+    <tr>
+      <td><strong>多实现同一接口</strong></td>
+      <td>每个实现贡献不同行为，同一签名降低了学习成本</td>
+      <td>块设备驱动、文件系统后端、分配器（jemalloc/mimalloc）</td>
+    </tr>
+    <tr>
+      <td><strong>装饰器</strong>（有实质增强）</td>
+      <td>接口一样，但行为被增强了</td>
+      <td><code>BufReader</code> 之于 <code>Read</code>、<code>mmap</code> 包装之于 <code>pread</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<p>判据只有一句：<strong>这个方法是否贡献了重要功能？</strong>透传之所以坏，是因为它一点新功能都没有。「重要」包括选路、转换、校验、缓冲、统计——只要调用方因此少做了一件事，它就站得住。</p>
+
+<h2><span class="num">7.3</span>三种修法，动手顺序有讲究</h2>
+
+<p>书里给了三种做法，按代价从低到高：</p>
+
+<ol>
+  <li><strong>把下层直接暴露给上层的调用方</strong>，上层类彻底不管这件事。最简单，但会让调用方多认识一个类型。</li>
+  <li><strong>在两层之间重新分配功能</strong>，让每个类都有自己连贯的职责。经常是正解，但需要你先想清楚职责边界。</li>
+  <li><strong>合并这两个类</strong>。当职责实在缠不清时，合并比硬拆好——拆出来的两个类会永远互相调用。</li>
+</ol>
+
+<p>还有一层常被忽略的判断：<strong>接口应该在实现它的那个类里。</strong>如果 <code>insert</code> 的功能完全实现在下层，那么 <code>insert</code> 就不该出现在上层。上层出现了它，说明职责还没分完。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>// 上层：看起来像个「页缓存」
+class PageCache {
+public:
+    ssize_t read_page(off_t off, void* buf) {
+        return dev_.read(off, buf, kPage);
+    }
+    void prefetch(off_t off) {          // 也是转发
+        dev_.read(off, scratch_, kPage);
+    }
+    size_t hits() const { return 0; }   // 永远 0
+private:
+    BlockDevice dev_;
+    std::byte scratch_[4096];
+};</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>① 三个方法都是转发，接口与 <code>BlockDevice</code> 同构；② <code>hits()</code> 恒为 0，是纯粹误导——读代码的人会以为有缓存命中统计；③ <code>prefetch</code> 读到一个成员 scratch 里然后扔掉，等于主动破坏页缓存；④ 上层每次改 <code>BlockDevice</code> 的签名，这里都得改。</p>
+<p>名字叫缓存，行为是透传，统计是假的。三者叠加比单纯的透传更糟，因为它还偷走了调用方的信任。</p>
+</div>
+</div>
+<p>改法：先问「缓存到底存在吗」。不存在——删掉这个类，让调用方直接用 <code>BlockDevice</code>，把 <code>prefetch</code> 变成 <code>BlockDevice</code> 上真正的 <code>madvise</code> 提示。要存在——那它必须有真实的状态（页表、命中计数、淘汰策略），此时接口才不再同构：<code>read_page</code> 命中时不碰设备，<code>flush</code> 要回写脏页。这个类的价值来自「不做 I/O」，而不是来自「转发 I/O」。</p>
+</div>
+
+<h2><span class="num">7.4</span>接口抽象 vs 实现抽象</h2>
+
+<p>「不同层不同抽象」还有第二个应用，更隐蔽：<strong>类的接口抽象应该和它的实现抽象不同</strong>。如果两者一样，这个类大概不深。</p>
+
+<p>书里的例子还是那个文本编辑器：大多数团队内部用「行」来存文本，每行一个对象。有些团队顺手把接口也做成行导向——<code>get_line</code>、<code>put_line</code>、<code>insert_line</code>。听起来自然，实际很糟：</p>
+
+<pre><code>// 行导向接口：把内部存储方式漏给了调用方
+class TextBuffer {
+public:
+    std::string get_line(size_t n) const;
+    void put_line(size_t n, std::string_view s);
+    void insert_line(size_t n, std::string_view s);
+};</code></pre>
+
+<p>为什么糟？因为上层真正要做的操作，几乎都不对齐行边界：敲一个键是在行中间插入；删除选区横跨好几行；查找替换可能跨行。用行导向接口，上层必须<strong>把行拆开、操作、再拼回去</strong>——而且这段拆拼代码会在 UI 里出现很多遍。</p>
+
+<pre><code>// 调用方被迫做的「行手术」，实际项目里会重复十几次
+auto line = buf.get_line(row);
+line.insert(col, "x");
+if (line.find('\n') != std::string::npos) {   // 插入的内容含换行
+    // 手动切成两行，还要处理 row+1 之后的所有行号
+}</code></pre>
+
+<p>改成字符/位置导向的接口（就是 L6 里那四个方法），内部的「行」表示完全不变，但拆行、并行的复杂度被收进模块内部。此时<strong>接口抽象（位置 + 字节串）与实现抽象（行的集合）明显不同</strong>——这个差异，正是这个类提供的价值。</p>
+
+<div class="excerpt">
+<span class="src">第 7 章 · 接口与实现</span>
+<p>面向字符的接口把行拆分与拼接的复杂性封装在文本类内部，这使该类更深，也简化了使用它的上层代码。这样一来，文本 API 与面向行的存储机制差别很大——<strong>这个差别代表了这个类提供的价值</strong>。</p>
+</div>
+
+<p>这句可以直接当评审判据用：<em>如果我把这个类的实现从头换一遍（换数据结构、换算法），它的接口需要改吗？</em>需要改，说明接口在抄实现，抽象没建立起来。</p>
+
+<h2><span class="num">7.5</span>传递变量：横穿整个调用栈的耦合</h2>
+
+<p>这是本章对「改一个需求要动好几处」最直接的回答。</p>
+
+<p>场景：一个服务启动时从命令行读到一个 TLS 证书路径，只有最底层的 <code>open_socket()</code> 用得上。你可能就这么写了：</p>
+
+<pre><code>int main(int argc, char** argv) {
+    const char* cert = parse_cert_path(argc, argv);
+    return run_service(cert);
+}
+int run_service(const char* cert)      { return handle_loop(cert); }
+int handle_loop(const char* cert)      { return dispatch(cert); }
+int dispatch(const char* cert)         { return worker(cert); }
+int worker(const char* cert)           { return open_socket(cert); }</code></pre>
+
+<p><code>cert</code> 就是<strong>传递变量</strong>（pass-through variable）：沿着一条长长的调用链往下传，中间那些方法一个都不用它，但签名里必须有它。</p>
+
+<p>代价很具体：</p>
+
+<ul>
+  <li>四个中间函数的签名里多了一个参数，读它们的人得猜「这个 cert 是干嘛的」；</li>
+  <li>要加第二个全局配置（比如超时），<strong>四个签名全部要改</strong>；</li>
+  <li>要写单测 <code>dispatch</code>，得先造一个 cert；</li>
+  <li>更要命的是：将来想在同一个进程里跑两个实例、用两份不同的证书，你发现做不到——因为 cert 是从 main 一路刻下来的。</li>
+</ul>
+
+<p>书里给了四种解法，各有代价：</p>
+
+<table>
+  <thead><tr><th>解法</th><th>做法</th><th>代价</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>共享对象</td>
+      <td>顶层和底层本来就共享某个对象，把值放进去</td>
+      <td>如果那个对象本身也是传下去的，问题只是搬了个家</td>
+    </tr>
+    <tr>
+      <td>全局变量</td>
+      <td>省掉传参</td>
+      <td>不能同进程跑两份实例，测试里尤其难受</td>
+    </tr>
+    <tr>
+      <td><strong>上下文对象</strong></td>
+      <td>所有全局状态放一个 <code>Context</code>，各对象持有它的引用</td>
+      <td>它自己可能变成传递变量；无纪律会变成「大杂烩」；要注意线程安全</td>
+    </tr>
+    <tr>
+      <td>重构调用链</td>
+      <td>让需要它的方法和提供它的方法直接相邻</td>
+      <td>动结构，风险大，但最干净</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>书里说自己最常用的是上下文对象。C++ 里它大概是这样，关键细节是：<strong>上下文只在构造函数里作为显式参数出现</strong>，其余地方都通过成员访问。</p>
+
+<pre><code>struct Ctx {                       // 一个进程一份（或一个实例一份）
+    const char* cert_path;
+    std::chrono::milliseconds timeout;
+    Metrics* metrics;
+};
+
+class Worker {
+public:
+    explicit Worker(Ctx&amp; ctx) : ctx_(ctx) {}
+    int run() { return open_socket(ctx_.cert_path); }   // 不再穿参
+private:
+    Ctx&amp; ctx_;
+};</code></pre>
+
+<div class="card">
+<h4>为什么「只在构造函数里出现」这么关键</h4>
+<p>因为这样 <code>Ctx</code> 就不会退化成新的传递变量。任何需要它的对象，创建时拿一次引用，之后按需取用；不需要它的对象，完全不知道它存在。新增一个字段（比如 <code>retry_budget</code>）时，除了 <code>Ctx</code> 的定义，<strong>现有代码一行都不用改</strong>——这就是把变更放大压到 1。</p>
+<p>书里也诚实说了：上下文里的变量带有全局变量的大部分缺点——「这个字段为什么存在、谁在用」不明显，无纪律会变成什么都能塞的垃圾袋。缓解手段是<strong>把字段尽量做成不可变</strong>，至少别在里面放可变状态。</p>
+</div>
+
+<h2><span class="num">7.6</span>一个统一的计算方式</h2>
+
+<p>整章其实可以收束成一个加减法，书里最后一段说的就是这个：</p>
+
+<div class="excerpt">
+<span class="src">第 7 章 · 净收益</span>
+<p>加到系统里的每一个设计元素——接口、参数、函数、类、定义——都会增加复杂性，因为开发者必须了解它。要让一个元素带来对抗复杂性的<strong>净收益</strong>，它必须消除掉一些本来会存在的复杂性；否则，不如不要这个元素。</p>
+<p>「不同的层，不同的抽象」只是这个想法的一个应用：如果不同的层有相同的抽象（透传方法、装饰器），那它们很可能没有提供足够的好处，来补偿它们代表的那份额外基础设施。</p>
+</div>
+
+<p>所以评审时那句「这层有什么用」，其实是在问一个可以量化的问题：<strong>加这一层减少了多少「调用方需要知道的事」，又增加了多少？</strong> 两边相等就该删，左边更大才留。</p>
+
+<hr>
+
+<h2><span class="num">练习</span>这是透传吗</h2>
+
+<div class="quiz">
+  <p class="q"><span class="tag">单选</span>下面哪个方法<strong>不是</strong>透传方法？</p>
+  <button data-why="纯粹的一行转发，并且在两层之间建立起签名耦合——典型的透传。">A. <code>int Cache::flush() { return disk_.flush(); }</code></button>
+  <button data-why="签名与下层同构、方法体只有一次调用，没有任何附加功能，仍是透传。">B. <code>ssize_t Fs::pread(o, b, n) { return dev_.pread(o, b, n); }</code></button>
+  <button data-ok="1" data-why="对。它按 opcode 在多个处理函数里选一个，选择本身就是功能——签名相同只是巧合（这一族处理函数接口一致，是为了降低学习成本）。这是调度器，合法。">C. <code>int Router::dispatch(u32 opcode, Req&amp; r)</code></button>
+  <button data-why="只是把参数改了个名字，方法体仍是一次转发；改名不改变同构的事实。">D. <code>int Dev::read_at(off_t o, void* b, size_t n)</code></button>
+  <p class="feedback"></p>
+</div>
+
+<h2><span class="num">练习</span>诊断四个模块</h2>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p><code>BufReader&lt;R&gt;</code> 包装任意 <code>Read</code>，接口与 <code>Read</code> 相同，但内部缓冲、减少系统调用。</p>
+    <div class="opts">
+      <button>透传，该删</button>
+      <button data-ok="1">合法装饰器</button>
+      <button>该合并</button>
+    </div>
+    <p class="note">接口同构但行为被增强（少了 syscall），这是装饰器的正当用法。注意它只有一个方法真正被增强，其余几个仍是转发——所以装饰器要薄，别叠三层。</p>
+  </div>
+
+  <div class="row">
+    <p><code>TextDocument</code> 的 <code>insert_string</code> 直接调 <code>TextArea::insert_string</code>，两者签名一模一样。</p>
+    <div class="opts">
+      <button data-ok="1">透传，该删</button>
+      <button>合法装饰器</button>
+      <button>调度器</button>
+    </div>
+    <p class="note">功能全在下层，接口却出现在上层——职责没分完。修法：让调用方直接用 <code>TextArea</code>，或把两个类合并。</p>
+  </div>
+
+  <div class="row">
+    <p>一个 <code>File</code> 类，接口是 <code>read(off, buf)</code>，内部用 inode + 块映射 + 页缓存实现。</p>
+    <div class="opts">
+      <button>接口抄了实现</button>
+      <button>透传，该删</button>
+      <button data-ok="1">接口与实现不同</button>
+    </div>
+    <p class="note">这是健康形态：接口抽象是「变长字节区间」，实现抽象是「块 + 缓存」。两者差别越大，这个类通常越深。</p>
+  </div>
+
+  <div class="row">
+    <p><code>run_service(cert, timeout, metrics, logger, flags)</code>，五个参数一路传给 <code>worker(...)</code>，中间三层都不用。</p>
+    <div class="opts">
+      <button>接口与实现不同</button>
+      <button data-ok="1">传递变量</button>
+      <button>合法装饰器</button>
+    </div>
+    <p class="note">五个参数横穿三层，任何新增全局配置都要改五个签名。收进 <code>Ctx</code>，并让 <code>Ctx</code> 只在构造函数里出现。</p>
+  </div>
+</div>
+
+<h2><span class="num">练习</span>拆还是并</h2>
+
+<div class="recall">
+<p>你的代码里有 <code>Connection</code>（TCP 连接）和 <code>Framer</code>（把字节流切成消息帧）。现在 <code>Framer</code> 需要知道连接的超时和关闭状态，于是你在 <code>Framer</code> 上加了一个 <code>Connection*</code> 成员，<code>Connection</code> 又持有 <code>Framer</code>。两个类互相调用，各 400 行。用第 7 章的尺子判断该怎么处理。</p>
+<p class="hint-inline">提示：先别急着定「拆」或「并」，先看抽象有没有变。</p>
+<textarea placeholder="两层各自消化了什么？谁在转发谁？有没有共享的知识？"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p>先做诊断，分三步：</p>
+<p><strong>① 抽象变了吗？</strong>变了：<code>Connection</code> 的抽象是「有序、可靠、可关闭的字节流」；<code>Framer</code> 的抽象是「一条一条有边界的消息」。从流到消息，这是真实的一层——不是透传，因此<em>不该合并</em>。</p>
+<p><strong>② 谁在转发，谁在共享知识？</strong>问题出在 <code>Framer</code> 持有 <code>Connection*</code>。这说明 <code>Framer</code> 同时在做两件事：切帧 + 管理连接生命周期。它把「连接状态」这个知识吃了进来，但那是 <code>Connection</code> 的领域——这是后门泄漏。</p>
+<p><strong>③ 改法：让 <code>Framer</code> 只依赖它真正需要的东西。</strong>把 <code>Connection*</code> 换成一个更窄的输入：</p>
+<pre><code>// Framer 不认识连接，只认识「给我更多字节」
+class ByteSource {
+public:
+    virtual ~ByteSource() = default;
+    // 返回实际读到的字节数；0 表示 EOF；负数是可重试的 errno
+    virtual ssize_t pull(std::span&lt;std::byte&gt; out) = 0;
+};
+
+class Framer {
+public:
+    Framer(ByteSource&amp; src) : src_(src) {}
+    // 返回一条完整帧；不足一帧时返回 nullopt
+    std::optional&lt;Frame&gt; next();
+private:
+    ByteSource&amp; src_;
+};
+
+class Connection final : public ByteSource { /* … */ };</code></pre>
+<p>现在依赖是单向的：<code>Connection</code> → <code>Framer</code>（通过接口）。<code>Framer</code> 可以在内存缓冲区、TLS 流、测试桩上工作——这同时解决了可测试性。</p>
+<p><strong>但要警惕：</strong>如果你把一个接口抽出来，它<strong>只有一个实现</strong>、且接口和 <code>Connection</code> 长得一样——那不是「不同的层」，那是一个新的透传层。判据回到本章的加减法：这个 <code>ByteSource</code> 消除的复杂度（Framer 不再管连接、可单测）是否大于它新增的（多一个概念）？在我们这个场景里是大于的，因为 <code>Framer</code> 同时要做切帧和连接管理，这两件事确实该分开。</p>
+<p>反例判断：如果你发现 <code>Framer</code> 去掉 <code>Connection*</code> 之后无事可做，只剩下调用 <code>conn.read()</code> 和 <code>conn.parse_frame()</code>——那就说明这里本来就没有「一层」，直接合并回 <code>Connection</code>。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>带走什么</h2>
+
+<p>三个动作，都可以在这周的评审里做：</p>
+
+<ol>
+  <li>把所有「方法体只有一句话、且那句话是调用同名方法」的函数挑出来，逐个问它贡献了什么。</li>
+  <li>找一个接口和实现<em>长得一样</em>的类，试着让接口往上抽象一层（位置代替游标、字节区间代替行），把复杂度收进去。</li>
+  <li>找一个参数出现在五个以上签名里的情况，把它收进上下文对象，然后只保留构造函数的显式传递。</li>
+</ol>
+
+<div class="key">
+<p><strong>贴进 code review 的话：</strong>「这一层和下一层的抽象是同构的——`insert_string` 只是转发了 `TextArea` 的同名方法，没消化任何东西。能不能把接口换成 `insert(pos, text)` / `erase(from, to)`，让它真的提供一层不同的抽象？如果它真的什么都不做，我们就删掉它，让调用方直接用下层。」</p>
+</div>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch07.html">第 7 章 不同的层，不同的抽象（中文全译）</a> — 图 7.1 把两种修法（暴露下层 / 合并）画得很清楚，值得对着图重读 7.2 节。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">贴一个你觉得「拆了反而更乱」的模块给我——两个类互相调也行。我们先用抽象是否变化判断该拆该并，再看是不是传递变量在作怪。</p>
+
+  <div class="nav-links">
+    <span><a href="0006-general-modules.html">← L6 · 通用模块更深入</a></span>
+    <span><a href="0008-lower-complexity.html">L8 · 降低复杂性 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

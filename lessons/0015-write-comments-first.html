@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L15 · 先写注释 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 15 章 · 课程 15 / 21</p>
+
+<h1>先写注释</h1>
+<p class="standfirst">前四课讲了注释该写什么、名字该怎么起。这一课讲时间顺序：<strong>什么时候写</strong>。答案是开工前，而理由不是「这样文档更好」——理由是它会让你的设计变好，因为一条写不出来的注释，就是设计还没想清楚的证明。</p>
+
+<h2><span class="num">15.1</span>「等代码稳定了再写」为什么永远不发生</h2>
+
+<div class="excerpt">
+<span class="src">第 15 章 · 推迟的代价</span>
+<p>几乎我见过的每个开发者都会推迟写注释。被问到为什么不早点写文档时，他们说代码还在变；说如果早写，代码一改就得重写文档，最好等代码稳定。但我怀疑还有另一个原因：他们把写文档当成苦差事，所以尽可能往后拖。</p>
+<p>不幸的是，这种做法有几个负面影响。<strong>首先，推迟文档通常意味着文档根本不会被写。</strong>一旦开始拖，就很容易再拖一点——毕竟代码再过几周会更稳定。等代码毫无疑问地稳定下来时，代码已经很多了，写文档的任务变得巨大且毫无吸引力。从来没有一个合适的时间让你停下来几天把缺失的注释补齐，而「继续修 bug 或写下个功能对项目更好」又很容易自我合理化。于是又多了些没有注释的代码。</p>
+</div>
+
+<p>第二段还有个更狠的版本，值得单独拎出来：</p>
+
+<div class="excerpt">
+<span class="src">第 15 章 · 即使你回去补</span>
+<p>即使你有自律回去写注释（别骗自己：你可能没有），注释也不会好。到那个阶段，你在精神上已经离开了，代码已经完成，你急着开始下一个项目。你知道写注释是对的，但它不好玩，你只想尽快熬过去。于是你快速扫一遍代码，加上刚好够让它看起来令人满意的注释。而且你设计代码已经是好几周前的事，对设计过程的记忆已经模糊。你看着代码写注释，<strong>所以注释重复了代码</strong>。即使你努力回想那些不明显的设计思想，也有一些你记不得了。于是这些注释漏掉了它们本应描述的最重要的东西。</p>
+</div>
+
+<p>这里把第 13 章的「<a class="gl" href="../reference/glossary.html#comments-repeat-the-code">注释重复代码</a><span class="en-inl">comments repeat the code</span>」解释成了<strong>时间问题而不是水平问题</strong>：为什么写注释的人会复述代码？因为他只能看着代码写。当时脑子里的那些「为什么这样」「这里不能那样」早就蒸发了，剩下的可观测对象就是代码本身，于是注释变成了代码的译文。</p>
+
+<p>这条因果链很重要，因为它给出一个反直觉推论：<strong>那些「注释没用」的代码库，很可能不是作者不会写注释，而是作者写得太晚。</strong>你在评审里看到的坏注释，是延迟的化石。</p>
+
+<h2><span class="num">15.2</span>作者的流程：六步</h2>
+
+<p>书里给的流程很具体，可以直接当 checklist 用：</p>
+
+<ol>
+  <li>新类，<strong>先写类<a class="gl" href="../reference/glossary.html#interface-comment">接口注释</a><span class="en-inl">interface comment</span></strong>。</li>
+  <li>接着写<strong>最重要的公共方法</strong>的接口注释和签名，<strong>方法体留空</strong>。</li>
+  <li>反复迭代这些注释，直到<strong>整体结构感觉对了</strong>。</li>
+  <li>这时才写类里<strong>最重要的成员变量</strong>的声明和注释。</li>
+  <li>最后填方法体，按需加<a class="gl" href="../reference/glossary.html#implementation-comment">实现注释</a><span class="en-inl">implementation comment</span>。</li>
+  <li>写方法体时通常会需要新的方法和变量——<strong>每个新方法，先写接口注释再写体；每个新变量，写声明的同时写注释</strong>。</li>
+</ol>
+
+<p>关键是第 3 步和第 6 步。第 3 步说的是「迭代」——允许注释改，而且是在没有代码的时候改，成本极低。第 6 步说的是「不留债」：代码完成时注释也完成了，<strong>从来没有积压的注释</strong>。</p>
+
+<p>把它落成 C++ 的实际操作顺序，大概是这样的。第一轮只有头文件和注释：</p>
+
+<pre><code>// segment_store.h  ——  此时还没有任何实现
+/**
+ * 一个只追加的分段存储。写入的数据被切成固定大小的段，
+ * 段落盘后不可修改；读取按 (segment_id, offset) 定位。
+ *
+ * 并发：write 可在任意线程调用；read 与 write 可并发，
+ * 读到正在写入的尾部区域会返回当前已提交的长度。
+ */
+class SegmentStore {
+public:
+    /**
+     * 追加一段数据，返回它在存储中的位置。
+     * 返回的位置可用于后续 read。write 返回时数据已进入
+     * 页缓存但未必落盘；要保证持久需调用 sync()。
+     */
+    Result&lt;Location, StoreError&gt; write(std::span&lt;const uint8_t&gt; data);
+
+    /**
+     * 读取 [loc, loc+len) 的数据。跨段边界时自动拼接。
+     * len 超过已提交长度时返回短读，不报错。
+     */
+    Result&lt;size_t, StoreError&gt; read(Location loc, size_t len,
+                                     std::span&lt;uint8_t&gt; out);
+
+    /**
+     * 阻塞直到所有已 write 的数据落盘。
+     * 返回后，此前所有 write 返回的位置都可安全用于崩溃恢复。
+     */
+    Status sync();
+};</code></pre>
+
+<p>走到这一步就已经能发现问题了。作者的原话是：<strong>注释提供了完整捕获抽象的唯一方式</strong>，而抽象对了，实现才有方向。比如上面 <code>read</code> 那条「短读不报错」——如果没写下来，实现时很自然会返回一个 <code>UnexpectedEof</code> 错误，而调用方（比如恢复流程）就得为这个「不是错误的情况」写分支。</p>
+
+<p>再往下，才轮到成员变量和实现：</p>
+
+<pre><code>private:
+    // 每段的字节数，编译期常量以保证 (segment_id, offset) 可换算。
+    static constexpr size_t kSegmentSize = 1 &lt;&lt; 20;
+
+    // 已落盘并 fsync 过的段数；segment_id &lt; synced_segments
+    // 的段保证可从崩溃中恢复。
+    size_t synced_segments = 0;
+
+    // 当前正在写的段；只被 write 线程修改，由 write_mutex 保护。
+    std::unique_ptr&lt;Segment&gt; active;
+</code></pre>
+
+<p><code>synced_segments</code> 那条注释里「<code>segment_id &lt; synced_segments</code> 的段保证可恢复」就是第 13 章说的<strong>边界与<a class="gl" href="../reference/glossary.html#invariant">不变量</a><span class="en-inl">invariant</span></strong>。写到这里你会发现：这个类其实<a class="gl" href="../reference/glossary.html#dependency">依赖</a><span class="en-inl">dependency</span>一个不变量（段是按 id 单调落盘的），如果实现时想乱序落盘（比如为了并行 fsync），这条注释就会立刻变成假话——<strong>那说明设计要改，而且现在是改它最便宜的时刻。</strong></p>
+
+<h2><span class="num">15.3</span>真正的收益：注释是矿里的<a class="gl" href="../reference/glossary.html#canary-in-the-coal-mine">金丝雀</a><span class="en-inl">canary in the coal mine</span></h2>
+
+<p>作者说三个好处，第二个最重要。第一个是「注释更好」（因为关键设计问题还在你脑子里），第三个是「写注释更有趣」（因为那是设计阶段，是寻找最简表达的过程，找到简单表达是种自豪）。第二个值得独占一整节：</p>
+
+<div class="excerpt">
+<span class="src">第 15 章 · 金丝雀</span>
+<p>在开始时写注释的第二个、也是最重要的好处，是它<strong>改善系统设计</strong>。注释提供了完整捕获抽象的唯一方式，而好的抽象是好的系统设计的基础。如果你一开始就写下描述抽象的注释，就可以在写实现代码之前检查和调整它们。</p>
+<p><strong>注释是复杂煤矿里的金丝雀。</strong>如果一个方法或变量需要很长的注释，那就是一个危险信号，说明你没有好的抽象。第 4 章说过，类应该是深的：最好的类有非常简单的接口，却能提供强大的功能。而判断接口复杂性的最佳方法，就是看描述接口的注释……如果接口注释必须描述实现的所有主要功能，那这个方法就是浅的。同样的道理适用于变量：如果要花很长时间才能完整描述一个变量，那是危险信号，说明你可能没有选对变量的分解方式。</p>
+</div>
+
+<p>把这段变成可查的三个信号：</p>
+
+<table>
+  <thead><tr><th>你观察到的现象</th><th>它说明什么</th><th>现在最便宜的动作</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>接口注释写起来<strong>很长</strong></td>
+      <td>抽象不好，或者这个方法干了太多事</td>
+      <td>删掉方法，重新找抽象；不要「先实现，以后再说」</td>
+    </tr>
+    <tr>
+      <td>接口注释里包含<strong>「内部是…」「先…再…」</strong></td>
+      <td>浅<a class="gl" href="../reference/glossary.html#module">模块</a><span class="en-inl">module</span>：接口本身的表达力不够，只能讲实现</td>
+      <td>问「用户到底需要知道什么」，把实现那部分删掉——如果删完发现没什么可说，这个模块就是多余的</td>
+    </tr>
+    <tr>
+      <td><strong>某个变量要写很多话</strong></td>
+      <td>它可能在表示多件事，或者变量的分解方式不对</td>
+      <td>拆成两个变量；这在第 14 章就是「起不出名字」的同一个信号</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="key">
+<p>三个信号共享一个形状：<strong>「难受」被当成要克服的障碍，而不是要被读取的信息。</strong>写接口注释卡住时，直觉是「再想想怎么写清楚」；正确动作是停下来问「为什么它写不清楚」。前一个动作产出更长的注释，后一个动作产出更好的设计。</p>
+</div>
+
+<p>还有一条限定条件，作者自己补的，很值得记住：注释只有<strong>既完整又清晰</strong>时才是好的复杂度指标。如果一组接口注释没给出调用所需的全部信息，或者<a class="gl" href="../reference/glossary.html#obscurity">晦涩</a><span class="en-inl">obscurity</span>到看不清，那它就不能用来衡量这个方法的<a class="gl" href="../reference/glossary.html#depth">深度</a><span class="en-inl">depth</span>。换句话说：<strong>懒省事的注释不能当免死金牌。</strong>「我注释很短，所以我的接口很干净」——如果调用方读完还是不知道怎么用，那只是注释写得差。</p>
+
+<h2><span class="num">15.4</span>成本核算：延迟其实省不了多少</h2>
+
+<p>推迟写注释的唯一像样的理由是省返工成本。作者算了一笔账：</p>
+
+<div class="excerpt">
+<span class="src">第 15 章 · 一笔粗算</span>
+<p>我们来重新审视一下延迟写注释的那个论点——它避免了代码演进时重新处理注释的成本。<strong>一个简单的粗算就表明这省不了多少。</strong></p>
+<p>首先，估算你花在敲代码和注释上的开发时间总和，包括修改两者的时间；这不太可能超过全部开发时间的 10%。即使你所有代码行里有一半是注释，写注释也可能占不到开发总时间的 5%。把注释推迟到最后，只能省下其中的一小部分，并不多。</p>
+<p>而先写注释意味着在写代码之前抽象就已经更稳定，这可能省下编码时间。反过来，先写代码的话，抽象会随代码一起演化，与注释优先的方法相比需要更多次代码修订。<strong>把这些都算上，先写注释可能总体上更快。</strong></p>
+</div>
+
+<p>这笔账的骨架值得单独抽出来，因为它能套用到所有「先做设计是不是浪费时间」的争论上：</p>
+
+<div class="grid2">
+  <div class="card">
+    <h4>延迟能省的</h4>
+    <p>只是「注释返工」这一项。而注释的<strong>书写时间本身</strong>在你算账的基数（全部开发时间）里本来就只有几个百分点——返工只是它的一部分。所以这场交易的天花板极低，怎么算都省不到哪里去。</p>
+  </div>
+  <div class="card">
+    <h4>延迟要付的</h4>
+    <p>① 大概率根本不会写（15.1）；② 写了也是代码译文（13.2 那些废注释）；③ <strong>抽象必须实现一遍才能定型</strong>，于是代码要改更多次——这一项的成本通常比前两项加起来还大，而且它是晚发现的 bug 和返工的主要来源。</p>
+  </div>
+</div>
+
+<p>第三点是这本书反复出现的投资逻辑（第 3 章）：<strong>在便宜的时候改设计。</strong>没有代码时改一个接口名是十分钟；有了三个调用方和一套测试之后是半天；上了生产之后是一个版本。</p>
+
+<p>补一句现实主义的注脚：作者说「如果你从没试过先写注释，试一试，坚持到习惯为止」。这件事需要坚持，因为前几个类的体验是「我在写文档，好慢」——收益要等到第一次因为写不出接口注释而砍掉一个多余的方法时才会出现。</p>
+
+<h2><span class="num">15.5</span>把它接回你的三个痛点</h2>
+
+<p>这一章看起来是「文档习惯」，其实正面命中三个痛点。逐条对上：</p>
+
+<table>
+  <thead><tr><th>痛点</th><th>先写注释怎么治它</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>① 改一个需求要动好几处，怕漏</strong></td>
+      <td>接口注释是<strong>契约的清单</strong>。需求变了，先改注释，编译器和 grep 会告诉你哪些实现还符合旧契约。<strong>注释先改，实现后改</strong>——这就是「还有哪里要动」的定位器。而第 13.7 章那种「加状态值要改四处」的枚举注释，是这条的极端形态。</td>
+    </tr>
+    <tr>
+      <td><strong>② 评审说不出所以然，只会说「不太好」</strong></td>
+      <td>有了注释，评审有了<strong>可比对的两样东西</strong>：注释声称的契约 vs 代码实际行为。评审意见从「我觉得不太好」变成「注释说失败时返回 -1，但 42 行直接 return 0——哪个对？」这是一个可以被回答的问题。这条是本课最实用的一条。</td>
+    </tr>
+    <tr>
+      <td><strong>③ 模块越拆越乱</strong></td>
+      <td>金丝雀机制（15.3）是拆分的<strong>验收标准</strong>：拆到每个接口注释都短而完整为止。反过来，如果拆完之后某个方法的接口注释还是必须讲实现，说明那一刀切错了位置——应该按抽象切，不是按代码行数切。</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>痛点②值得再多说一句。评审最难的部分不是发现 bug，是<strong>把「不舒服」翻译成可执行的请求</strong>。而注释提供了一个特别好的翻译器，因为它是作者自己写下的意图。你的意见不需要攻击设计品味，只需要指出「你的注释和你的代码不一致」——这是客观的，作者很难反驳，而且往往顺着这条线自己就能发现设计问题。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div>
+<b>这样写（先实现，注释最后补）</b>
+<pre><code>// 环形缓冲，用于在两线程之间传数据。
+struct RingBuf {
+    std::vector&lt;uint8_t&gt; buf;
+    size_t head = 0, tail = 0;
+    std::mutex m;
+};
+
+// 写入数据，返回写入的字节数。
+size_t write(const uint8_t* p, size_t n);
+
+// 读取数据，返回读取的字节数。
+size_t read(uint8_t* p, size_t n);
+
+// 重置。
+void reset();</code></pre>
+</div>
+<div>
+<b>为什么烂</b>
+<p>注释是在实现完之后、看着代码写的，所以每一条都在说「这个函数叫什么」，没有一条在说「调用方必须知道什么」。四条注释加起来的信息量是四个函数名。</p>
+<p>而契约全都没写，且<strong>每一条猜错都是并发 bug 或数据丢失</strong>：</p>
+<p>① <code>write</code> 满了怎么办——写一部分返回短写？还是返回 0 表示满？还是阻塞？返回值 0 到底是「满了」还是「n 为 0」？</p>
+<p>② 谁负责加锁？<code>m</code> 是成员，但 <code>write</code> 和 <code>read</code> 是不是各自加锁？如果是，那 <code>read</code> 的多次调用之间数据可能被 <code>write</code> 覆盖——环形缓冲最经典的丢数据现场。</p>
+<p>③ <code>reset</code> 能并发调用吗？重置时另一个线程正在 <code>read</code> 会怎样？它清不清 <code>m</code>？现在这个签名下，<code>reset</code> 只能由「知道没有并发的调用方」调用，而这个约束一个字都没写。</p>
+<p>④ 名字里的 <code>RingBuf</code> 没说清是单生产者单消费者还是多对多——这直接决定了它能不能用无锁实现，是这类结构最要紧的性质。</p>
+</div>
+</div>
+<p>改法：<strong>回到写实现之前</strong>。先只写头文件，把「谁加锁、满了怎么办、能不能并发」在注释里定下来，再写 <code>.cpp</code>。你会发现定这些的时候，设计自己就变了——比如你可能发现 <code>read</code> 不该加锁（应该由调用方持有 <code>m</code> 并配合 <code>peek</code>/<code>consume</code> 两步），而这个结论在没有代码时是十分钟的事。</p>
+<pre><code>/**
+ * 单生产者 / 单消费者 的字节环形缓冲。
+ *
+ * 所有权：不分配内存，buf 由调用方提供；本对象不拥有它。
+ * 容量：可用字节数恒为 buf.size() - 1（保留一个字节以区分空和满）。
+ *
+ * 并发契约：
+ *   - write 只能由一个线程调用，read 只能由另一个线程调用。
+ *   - write 与 read 可并发执行，不需要额外的锁。
+ *   - 任何两个 write（或任何两个 read）不得并发。
+ *   - 本类内部不使用 std::mutex；调用方若需要多生产者，
+ *     必须在外部加锁，并把两次调用序列化为一次。
+ */
+struct RingBuf {
+    std::span&lt;uint8_t&gt; buf;      // 由调用方提供且必须比本对象活得久
+    std::atomic&lt;size_t&gt; head{0};  // 生产者写，消费者读
+    std::atomic&lt;size_t&gt; tail{0};  // 消费者写，生产者读
+};
+
+/**
+ * 尽可能多地写入 min(n, free_space) 字节。
+ * \return 实际写入的字节数。返回 0 当且仅当缓冲已满
+ *         或 n == 0（调用方应先查 free_space() 区分两者）。
+ * \note   可能发生「短写」：返回值小于 n 不是错误，调用方应循环。
+ */
+size_t write(std::span&lt;const uint8_t&gt; src);
+
+/**
+ * 尽可能多地读出 min(n, available) 字节。
+ * \return 实际读出的字节数，0 表示当前无数据。
+ * \note   读出的字节立即从缓冲移除；没有 peek 语义。
+ */
+size_t read(std::span&lt;uint8_t&gt; dst);
+
+/**
+ * 丢弃全部未读数据并重置为空。
+ * \warning 不是线程安全的。只能在 write 与 read 都不可能并发时调用
+ *          （例如构造之后、或两个线程都已 join 之后）。
+ */
+void reset();</code></pre>
+<p>现在对比一下两份东西的<strong>体积和顺序</strong>：第二版的注释是先写的，所以它决定了实现——<code>std::atomic</code> 而不是 <code>std::mutex</code> 就是被注释里那句「不需要额外的锁」逼出来的。第一版的注释是后写的，所以它只能描述已经写好的东西。<strong>同一份代码，注释的写作顺序决定了它是设计的输入还是输出。</strong></p>
+</div>
+
+<h2><span class="num">15.6</span>五个课的一条线</h2>
+
+<p>第 11–15 章其实是一条流水线，值得放在一起看，因为它们互为前提：</p>
+
+<table>
+  <thead><tr><th>课</th><th>动作</th><th>产出</th><th>它治什么</th></tr></thead>
+  <tbody>
+    <tr><td>L11 <a class="gl" href="../reference/glossary.html#design-it-twice">设计两次</a><span class="en-inl">design it twice</span></td><td>写两个方案，比较优劣</td><td>选中的抽象</td><td>第一个想法通常不够好</td></tr>
+    <tr><td>L15 先写注释</td><td>把抽象写成接口注释</td><td>可检查的契约</td><td>让设计在写代码前定型</td></tr>
+    <tr><td>L13 注释什么</td><td>只写不明显的内容</td><td><a class="gl" href="../reference/glossary.html#precision">精度</a><span class="en-inl">precision</span> + 直觉</td><td>让读者不必读实现</td></tr>
+    <tr><td>L14 命名</td><td>把抽象浓缩进几个词</td><td>一眼可见的意图</td><td>让读者不必读注释</td></tr>
+    <tr><td>L12 为什么写</td><td>（前提）接受这件事值得做</td><td>—</td><td>否则前四步都不会发生</td></tr>
+  </tbody>
+</table>
+
+<p>顺序上 L15 排在 L13、L14 之前，是因为<strong>先写注释这个动作本身，会逼你用上 L11 和 L14 的方法。</strong>写不出接口注释 → 回去再设计一次（L11）；注释里全是实现细节 → 模块太浅（L13）；注释必须重复名字 → 名字太泛（L14）。一个动作把另外四课全勾起来了。</p>
+
+<hr>
+
+<h2><span class="num">练习</span>该不该现在写</h2>
+
+<p>五个场景。判断「先写注释」在这里是不是值得，还是有一条更合适的路。</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>你要写一个新的 <code>class Journal</code>，负责 WAL 的追加、截断和恢复，预计 800 行。</p>
+    <div class="opts">
+      <button data-ok="1">先写接口注释</button>
+      <button>先实现再补</button>
+      <button>不用写注释</button>
+    </div>
+    <p class="note">典型目标：三个公开方法、生命周期、崩溃恢复的保证全是「不明显」的信息，而且它会被别的模块依赖。<strong>先写接口注释的收益在这里最大</strong>——恢复语义一旦定错，实现和调用方要一起改。</p>
+  </div>
+
+  <div class="row">
+    <p>你在调一个 20 行的 <code>crc32_combine</code>，算法来自论文，照着伪代码实现。</p>
+    <div class="opts">
+      <button>先写接口注释</button>
+      <button data-ok="1">实现后再补，但补的是「为什么」</button>
+      <button>不用写注释</button>
+    </div>
+    <p class="note">20 行的纯函数，签名 + 一个引用论文的链接基本就够。这里的注释价值不在接口（<code>crc32_combine(crc1, crc2, len2)</code> 已经很自明），而在实现里「为什么用这个多项式」「为什么这一步不能省」——那属于实现注释，实现完再写更自然。</p>
+  </div>
+
+  <div class="row">
+    <p>一个 <code>get_config_path()</code>，返回 <code>std::string</code>，8 行。</p>
+    <div class="opts">
+      <button>先写接口注释</button>
+      <button>不用写注释</button>
+      <button data-ok="1">一句话注释就够</button>
+    </div>
+    <p class="note">先写注释不是教条。但这句话值得想清楚：它读环境变量吗？找不到时返回空串还是抛？这两条决定了调用方要不要 <code>try</code>。所以「一句话」也得是那一句对的话。</p>
+  </div>
+
+  <div class="row">
+    <p>你接手的一段代码，没有任何注释，现在要给它加一个新分支。</p>
+    <div class="opts">
+      <button>先给整个类补全接口注释</button>
+      <button data-ok="1">只给要改的那部分补，边改边写</button>
+      <button>不用补，反正能跑</button>
+    </div>
+    <p class="note">全量补注释是不可行的（15.1：任务一旦巨大就永远不做）。正确做法是<strong>「边改边补」</strong>：你要理解的那部分，顺手把理解写成注释——反正你刚刚才费力把它想明白，这是唯一成本低的时刻。这也是第 16 章的入口。</p>
+  </div>
+
+  <div class="row">
+    <p>你在给一个已有接口加参数。<code>read(fd, buf, n)</code> → <code>read(fd, buf, n, timeout)</code>。</p>
+    <div class="opts">
+      <button data-ok="1">先停下来重做设计</button>
+      <button>先写接口注释</button>
+      <button>直接加，注释后补</button>
+    </div>
+    <p class="note">加参数这件事本身就是设计信号：接口要变复杂了，说明原来的抽象不够。<strong>先别写注释，先回去做 L11（设计两次）</strong>——<code>timeout</code> 是不是该属于一个 <code>Reader</code> 配置而不是每次调用传？先算这个，再决定注释怎么写。别忘了 <code>timeout</code> 单位是什么、0 和负值各什么意思。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>把评审意见翻译成设计问题</h2>
+
+<div class="recall">
+<p>你在评审里想说「这个模块设计得不太好」，但说不清。用 15.3 的三个信号，把它改写成一条可执行的意见。</p>
+<p>被评审的代码：一个 <code>class Cache</code>，接口注释 40 行，里面提到 LRU 链表、哈希表、锁的粒度、「淘汰时先摘链再释放」，公开方法 12 个，其中 <code>get</code> 的注释写着「内部会先查 hash 表，未命中则从磁盘读并插入链表头部」。</p>
+<p class="hint-inline">提示：先只数一件事——这个接口注释里，有多少句是「用户必须知道」，多少句是「维护者才需要知道」？</p>
+<textarea placeholder="现象：…  它说明：…  我的意见：…"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p><strong>现象（先客观）：</strong></p>
+<ul>
+  <li>接口注释 40 行。</li>
+  <li>其中有关于 LRU 链表、哈希表、锁粒度的描述——<strong>这些是「内部是…」型信息</strong>，属于 15.3 第二个信号：接口注释必须描述实现。</li>
+  <li>12 个公开方法。</li>
+  <li><code>get</code> 的注释解释了实现路径（查 hash → 未命中读盘 → 插头部）。</li>
+</ul>
+<p><strong>它说明什么：</strong>这个类是<strong>浅</strong>的——接口的表达力和功能差不多，所以只能靠讲实现来说明自己在干什么。而且 40 行接口注释对它自己的用户来说太长，恰好符合金丝雀信号。<strong>注意：这不等于「这个类写得烂」</strong>，它可能功能完全正确、性能很好。诊断只针对<strong>接口</strong>。</p>
+<p><strong>一条可执行的意见：</strong></p>
+<blockquote>
+<p>「我把 <code>Cache</code> 的接口注释按『调用方是否需要』分了一遍：40 行里大约 25 行在讲 LRU 链表、哈希表结构和锁粒度，这些是实现，用户不需要。属于契约的只有几条：<code>get</code> 未命中时是返回 <code>nullopt</code> 还是抛、命中后条目会不会被别处淘汰（即返回的引用/迭代器有效期）、并发调用的保证、以及内存上限。我建议接口注释只留这几条，把实现描述搬到 <code>.cpp</code>。</p>
+<p>然后有个更实质的问题：<strong>12 个公开方法对一个缓存来说偏多</strong>。我怀疑其中有几个是「用户其实不需要，但实现为了方便暴露了」——比如 <code>trim()</code>、<code>stats_detail()</code>、<code>rehash()</code>。能不能确认一下哪些是被外部调用的？如果一个方法从来没有外部调用方，把它变成 private 之后，这个类的接口可能就能用几句话说完，那它会变成一个更好的抽象。」</p>
+</blockquote>
+<p><strong>这条意见为什么能起作用：</strong></p>
+<ol>
+  <li><strong>它有数</strong>——40 行、25 行、12 个方法。不是「我觉得复杂」，是「这里有个可验证的比例」。</li>
+  <li><strong>它区分了「诊断」和「评价」</strong>——明确说接口浅，不说代码烂。作者不会觉得被攻击，因为你说的是抽象，不是能力。</li>
+  <li><strong>它给了一个可以由作者自己验证的动作</strong>——「查一下哪些方法有外部调用方」。这个动作的结果可能支持你，也可能否掉你，两种都行：如果 12 个全都在用，那就是需求真的复杂，你对注释的意见依然成立。</li>
+  <li><strong>它落在一个小改动上</strong>——把实现描述挪到 <code>.cpp</code>、把死方法降为 private。不是「重写 Cache」。</li>
+</ol>
+<h3>反过来的用法</h3>
+<p>这个练习也可以自己用：下次写新类之前，先把 12 个方法砍成 4 个再动笔。你会发现「砍到几个」这个问题，本身就是 L11 的第二次设计。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>一句话评审</h2>
+
+<div class="key">
+<p><strong>下面这段话照抄也能用：</strong>「<code>read()</code> 的接口注释没写失败时返回什么，而实现里第 88 行返回 −1、第 103 行返回 0。这两个值调用方一定分不清——建议先把注释改成明确的契约（0 表示读到末尾还是无数据？−1 覆盖哪些 errno？），再回头看实现要不要统一。顺带一句：<strong>如果这条注释很难写清楚，可能说明这个函数的成功/失败语义本身就该拆成两个返回值</strong>（比如 <code>Result&lt;size_t, ReadError&gt;</code>），而不是让调用方从 <code>ssize_t</code> 的正负号里猜。」</p>
+</div>
+
+<p>这条意见的结构：<strong>指出注释与代码不一致（客观、可验证）→ 指出这对调用方的实际后果 → 给出「写不出来就等于设计有问题」的出口</strong>。第三段是这一章独有的东西——它把一条注释意见升级成一次设计讨论，而作者通常更愿意接受后者，因为它意味着你在帮他，不是在挑他。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch15.html">第 15 章 先写注释（中文全译）</a> — 原文的六步流程和那笔成本粗算都在，篇幅不长，建议整章读一遍；作者的表述比本课更直接。</p>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch04.html">第 4 章 模块应该是深的</a> — 15.3 的「金丝雀」判据完全建立在「深模块」这个概念上。如果你对「浅」没有手感，先读第 4 章，它会告诉你为什么「接口注释要讲实现」是一件严重的事。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">挑一个你正要写的类（或者一段正要改的代码），我们只做第一步：<strong>你口述它对外承诺什么，我把它写成接口注释，先不碰实现。</strong>如果写的过程中卡住，那就是这一课要教的东西——卡在哪里，就是设计还没定的地方。</p>
+
+  <div class="nav-links">
+    <span><a href="0014-choosing-names.html">← L14 · 选择的名字</a></span>
+    <span><a href="0016-modifying-existing-code.html">L16 · 修改现有代码 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

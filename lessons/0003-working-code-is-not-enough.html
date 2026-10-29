@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L3 · 工作代码是不够的 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 3 章 · 课程 3 / 21</p>
+
+<h1>工作代码是不够的</h1>
+<p class="standfirst">前两章讲清了<a class="gl" href="../reference/glossary.html#complexity">复杂性</a><span class="en-inl">complexity</span>是什么。这一章讲为什么明知如此，我们还是在制造它，以及那个唯一可行的解药：把设计当成投资，每次都投一点。</p>
+
+<h2><span class="num">3.1</span>两种编程风格</h2>
+
+<div class="grid2">
+  <div class="card">
+    <h4><a class="gl" href="../reference/glossary.html#tactical-programming">战术编程</a><span class="en-inl">tactical programming</span></h4>
+    <p>目标是<strong>让功能跑起来</strong>。每个任务上做一点小妥协，因为「就这一次，问题不大」。</p>
+    <p class="term-line">单个决定都合理，累积起来是灾难</p>
+  </div>
+  <div class="card">
+    <h4><a class="gl" href="../reference/glossary.html#strategic-programming">战略编程</a><span class="en-inl">strategic programming</span></h4>
+    <p>目标是<strong>好设计 + 能工作</strong>。作者的要求很硬：几乎每一个任务都要这样，而不是重大重构时才想起来。</p>
+    <p class="term-line">把设计当成持续投资，而非开销</p>
+  </div>
+</div>
+
+<p>战术编程的杀伤力不在于某次妥协有多糟，而在于那句「就这一次」<strong>在每一个任务上都成立</strong>。于是：小的妥协 → 系统变脏 → 下一个改动更难 → 更想走捷径 → 更脏。作者把这个循环描述得很具体：几个星期或几个月后，问题开始显现，而这时清理已经需要几个月的工作量。而你又告诉自己「先让下一个功能跑起来比回头重构更重要」，于是继续打补丁。</p>
+
+<div class="excerpt">
+<span class="src">第 3 章 · 战术编程为什么是短视的</span>
+<p>如果你用战术方式编程，你会尽量快地把任务做完。也许你有一个很紧的期限，于是为将来做计划不是优先事项，你不会花太多时间寻找最好的设计，只想尽快让某个东西生效。你告诉自己：为了把当前任务做得更快，增加一点复杂性、或者引入一两个小问题，没什么大不了。这就是系统变复杂的方式——不是某个特定事物造成了复杂性，而是数十或数百个小事积累的结果。</p>
+</div>
+
+<div class="card">
+<h4>战术龙卷风 tactical tornado</h4>
+<p>战术编程者的极端形态：产出惊人、上线飞快，身后留一地废墟。<strong>管理层把他当英雄</strong>，因为废墟的账单由后来的人付。作者补了一句很刻薄的话：英雄是那些接手废墟、把它重新整理好的人。</p>
+</div>
+
+<p>落到 C/C++ 的日常里，战术编程的痕迹长这样：一个新的 <code>#define MAX_XXX</code>、一份复制粘贴的解析循环、一个「暂时先不做边界检查」的 <code>memcpy</code>、一个为了赶 demo 加上去的 <code>static</code> 全局标志。每一条单独看都能自圆其说。但它们都会在两年后变成某个人的深夜事故单。</p>
+
+<h2><span class="num">3.2</span>投资的两个方向</h2>
+
+<table>
+  <thead><tr><th>类型</th><th>什么时候做</th><th>具体动作</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>主动投资</strong><br><span class="term">proactive</span></td>
+      <td>写新代码时</td>
+      <td>不实现第一个想到的方案；试几种替代设计再选更简洁的那个；写好接口文档</td>
+    </tr>
+    <tr>
+      <td><strong>被动投资</strong><br><span class="term">reactive</span></td>
+      <td>发现设计问题时</td>
+      <td>不绕过它。花时间修，哪怕它「目前还能跑」</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="excerpt">
+<span class="src">第 3 章 · 主动与被动投资</span>
+<p>有些投资是主动的。比如为每个新类花一点时间去找一个简单的设计：不要直接实现你想到的第一个方案，而是试几种替代设计，挑出最简洁的那个；设想将来系统可能以哪几种方式被改动，并确保设计能应付这些改动。写好文档也是主动投资的例子。另一些投资是被动的：无论你事先投入多少，设计决策里都不可避免地会出错，随着时间推移这些错误会变得明显。发现设计问题时，不要忽略它，也不要补丁了事，多花一点时间去修好它。</p>
+</div>
+
+<p>比例：<strong>总开发时间的 10–20%</strong>。作者把这个数字说得很死，也给了它的账：</p>
+
+<div class="key">
+<p>初期你会慢 <strong>10–20%</strong>；但几个月内，收益就会超过成本，之后你<strong>持续比战术路线更快</strong>。反过来，如果从不投资：第一个项目上你快 10–20%，但从此以后每一个项目都慢 ≥10–20%，而且这个惩罚<strong>贯穿整个生命周期</strong>。</p>
+</div>
+
+<p>这里有个不对称：省下的时间是一次性的，付出的代价是永久的。书里把这两条路线画成一条生产率随时间的曲线：</p>
+
+<figure class="curve">
+<svg viewBox="0 0 520 240" role="img" aria-label="生产率随时间变化：战术路线起步领先，随后被复杂性拖慢；战略路线起步落后，几个月后反超">
+  <line x1="56" y1="196" x2="486" y2="196" stroke="#ded6c8" stroke-width="1.5"/>
+  <line x1="56" y1="196" x2="56" y2="30" stroke="#ded6c8" stroke-width="1.5"/>
+  <path d="M56 176 C120 104 190 94 270 100 C360 106 430 116 486 126" fill="none" stroke="#9a3324" stroke-width="2.5"/>
+  <path d="M56 190 C120 180 200 152 292 106 C360 70 430 40 486 27" fill="none" stroke="#2f6b46" stroke-width="2.5"/>
+  <line x1="283" y1="196" x2="283" y2="101" stroke="#8b847a" stroke-width="1" stroke-dasharray="3 4"/>
+  <text x="290" y="210" font-size="12" fill="#55504a">几个月后交叉</text>
+  <text x="120" y="86" font-size="13" fill="#9a3324">战术：先快后慢</text>
+  <text x="300" y="52" font-size="13" fill="#2f6b46">战略：先慢后快</text>
+  <text x="492" y="200" font-size="12" fill="#55504a" text-anchor="end">时间 →</text>
+  <text x="52" y="24" font-size="12" fill="#55504a">生产率</text>
+</svg>
+<figcaption>据原文重绘的图 3.1，只是定性示意。作者明说没有对曲线精确形状的经验测量，确定的只有方向：战术起步快、随后被复杂性拖下去，战略起步慢、几个月后反超。</figcaption>
+</figure>
+
+<h3>「主动投资」在底层代码里是什么样子</h3>
+
+<p>不是「加个抽象层」，往往相反。举三个具体的：</p>
+
+<ul>
+  <li><strong>先想清楚所有权，再写第一行。</strong>这块内存归谁？谁 <code>free</code>？出错路径上谁来收？花二十分钟把这个定下来，比事后追一个每周泄漏 4KB 的 bug 便宜太多。</li>
+  <li><strong>先想清楚错误怎么表达。</strong>返回 <code>int</code> + <code>errno</code>？<code>Result&lt;T, E&gt;</code>？还是 out 参数？三种都行，但不能混。混着用的<a class="gl" href="../reference/glossary.html#module">模块</a><span class="en-inl">module</span>，调用方每写一行都要重新判断。</li>
+  <li><strong>试第二种接口。</strong>第一个想到的接口永远是「实现的镜像」。把实现放一边，先写调用方最想看到的三行代码，再倒推接口。这个动作十分钟，经常能省掉一整层。</li>
+</ul>
+
+<h2><span class="num">3.3</span>「等成功了再清理」为什么不成立</h2>
+
+<p>创业公司的经典论证：早期生存压力大，先跑起来，成功之后雇人清理。作者逐条反驳：</p>
+
+<ol>
+  <li><strong>一旦变成意大利面，几乎不可能修。</strong>不是「花钱就能修」，是「修不动」：清理需要先理解系统，而系统已经不可理解。</li>
+  <li><strong>好设计和坏设计的回报都很快。</strong>「以后再优化」这个前提是假的：<a class="gl" href="../reference/glossary.html#strategic-investment">战略投资</a><span class="en-inl">strategic investment</span>的收益在几个月内就出现，并不需要等到遥远的未来。</li>
+  <li><strong>坏代码库招不到、也留不住好工程师。</strong>这是最实际的一条。人不是机器，烂代码本身就是离职原因。</li>
+</ol>
+
+<p>书里给的对照很有说服力：Facebook 早期口号是「Move fast and break things」，后来改成了「<em>Move fast with stable infrastructure</em>」，连它自己都发现前半句的下半场代价太高。Google 和 VMware 从一开始就是战略路线，也没因此死掉。</p>
+
+<p>第二条要再强调一次，因为它推翻了很多人心里的错误前提：他们以为「好设计」是一笔要等到遥远未来才回本的投资，所以短期当然该省。作者说不是：几个月的量级就开始回本。你不需要活到三年后才有资格享受好设计：下一个人改这段代码时，账单就开始还了。</p>
+
+<div class="card">
+<h4>最危险的一句话</h4>
+<p>「先战术一下，回头再补。」作者说这是<strong>滑坡效应</strong>，不是风险提示：一旦开始往后拖，几乎必然再拖一次，因为每拖一天问题就更大一点、方案就更可怕一点。拖延不会自愈，只会自我强化。</p>
+</div>
+
+<div class="excerpt">
+<span class="src">第 3 章 · 滑坡效应</span>
+<p>一致地采用战略方式、并且把投资当成当下就该做的事而不是将来要做的事，这一点至关重要。当你陷入危机时，很容易把清理推迟到危机结束之后，但这是一条滑坡：推迟一次之后，几乎肯定会再推迟一次。一旦开始推迟设计改进，就很容易让推迟变成永久的，并把整个文化拖进战术编程里。你等得越久，问题就越大，解决方案就越令人生畏，于是推迟起来也就越轻松。</p>
+</div>
+
+<p>这条在本章末尾会收成一句非常反直觉的结论：最有效的做法不是找到一次大重构的机会，而是<strong>让每位工程师持续做小额投资</strong>。设计不是项目的阶段，是每次改动里的十五分钟。</p>
+
+<h2><span class="num">3.4</span>为什么这个取舍在评审里特别难</h2>
+
+<p>这一章的难处不在「知道」，而在「当场判断」。评审的时候，你看到一个 60 行的函数里塞了两件事，直觉告诉你不该合着；但另一边赶着上线，你又说不出它到底会造成什么后果。于是你放过它。</p>
+
+<p>作者给的处理方式可以总结成两条简单规则，专门治这种说不出口的场合：</p>
+
+<table>
+  <thead><tr><th>情况</th><th>怎么办</th><th>判断依据</th></tr></thead>
+  <tbody>
+    <tr><td>修复成本 &lt; 半小时，且明显减少<a class="gl" href="../reference/glossary.html#dependency">依赖</a><span class="en-inl">dependency</span></td><td>当场做，别记录</td><td>被动投资的最小单位</td></tr>
+    <tr><td>修复会牵动大范围 / 有风险</td><td>记录并<strong>明确说这是债务</strong></td><td>区别在于「有意识的决策」与「习惯性绕过」</td></tr>
+  </tbody>
+</table>
+
+<p>第二条的重点在别处：作者并不要求你在任何情况下都停下来重构。他要的是<strong>不假装没看见</strong>。写下「这里有两份解析逻辑，格式一改要改两处，暂时不合」这句话的成本是三十秒，而它的价值是让这个决策从此<strong>可见</strong>，下一个人不会在毫不知情的情况下踩上去。这就是「有意识的绕过」和「习惯性绕过」的全部区别。</p>
+
+<p>这也直接回应了第三个痛点的前置条件：模块拆得对不对，取决于你有没有把「该拆的理由」和「暂时不拆的理由」都写下来。凭感觉拆，越拆越乱；按知识边界拆（第 5 章），才有稳定的判据。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>/* 战术路线：急着上线，先这样 */
+static int handle_msg(int fd, const uint8_t *buf, size_t n) {
+    struct header h;
+    memcpy(&amp;h, buf, sizeof h);          /* 假设 buf 够长 */
+    if (h.magic != 0xCAFE) return -1;
+
+    /* 业务逻辑直接写在这，顺手算个校验和 */
+    uint32_t sum = 0;
+    for (size_t i = 0; i &lt; n; i++) sum += buf[i];
+    if (sum != h.checksum) return -1;
+
+    return dispatch(fd, h.type, buf + sizeof h, n - sizeof h);
+}</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>三个战术妥协叠在一个函数里：<code>memcpy</code> 没检查 <code>n &gt;= sizeof h</code>（越界读，攻击面）；校验和算法硬编码在这里，而协议这个字段的定义在另一个文件里另有一份（<a class="gl" href="../reference/glossary.html#information-leakage">信息泄漏</a><span class="en-inl">information leakage</span>，第 5 章）；<code>dispatch</code> 拿到的是裸指针 + 长度，任何调用者都可以随便构造一个不满足不变式的参数。</p>
+<p>单看每一处都「先这样能跑」。但下一个要加消息类型的人会先发现校验和算错了，然后发现没法单独测试 <code>handle_msg</code>，因为它把解析、校验、分发三件事焊死了。</p>
+</div>
+</div>
+<p>改法：把「报文的内部布局与校验」收进一个模块，接口给 <code>msg_parse(buf, n, &amp;msg) -&gt; Result&lt;msg_view, parse_err&gt;</code>，越界和校验都在里面处理，调用方拿到的是已经验证过的视图。<code>handle_msg</code> 退化成十行：解析、查表分发、返回。投资额大概四十分钟，回本点是下一个人加消息类型的时候，他只需要改一张表。</p>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>你是哪种工程师？</h2>
+
+<div class="quiz">
+  <p class="q"><span class="tag">场景 1</span>你接到一个数据导出需求。第一种实现写成 80 行、塞在 handler 里、能跑。你意识到还可以抽成一个独立的导出模块，多花 40 分钟。按本书，你该怎么做？</p>
+  <button data-ok="1" data-why="这是典型的主动投资：试替代设计、取更简洁的那个。书中建议这类投入占总开发时间的 10–20%，40 分钟完全在合理范围内，而且下一个人改这个 handler 时就开始回本。">先花四十分钟试模块化写法，选简洁方案落地</button>
+  <button data-why="「能跑、以后再说」正是战术编程的定义。它的问题不是这一次错了，而是这套判断在下一个任务上同样会通过。">先按八十行上线，功能正确比结构更要紧</button>
+  <button data-why="「合适的时候统一重构」是书中点名的滑坡。清理越拖越大，越没人敢动；作者的建议是当场小额投资，而不是攒着。">记入技术债清单，等季度末一起重构收尾</button>
+  <p class="feedback"></p>
+</div>
+
+<div class="quiz">
+  <p class="q"><span class="tag">场景 2</span>你在读一段旧代码，发现两个模块各自实现了一遍同一种配置文件的解析。此刻你的任务是改一个无关的 bug。按本书，你的最佳选择是？</p>
+  <button data-why="这是绕过：你知道问题存在，却选择让它继续存在。作者明确指出，发现问题后绕过它正是复杂性累积的主要方式。">合并两处解析，顺手把当前 bug 一起修掉</button>
+  <button data-ok="1" data-why="注意书里的取舍是「讲究分寸」。底线是：如果修复要牵动大范围、风险远超收益，就记录下来并明确它属于债务，而不是假装没看见。区别在于有意识的决策与习惯性绕过。">先评估成本：小就当场合并，大就记录上报</button>
+  <button data-why="「与我无关」是最常见的自我辩护。功能上确实无关，但设计上你已经在现场看见了那份重复的知识，这个信息本身就是本次任务的产出之一。">专注本次缺陷范围，把重构留给模块负责人</button>
+  <p class="feedback"></p>
+</div>
+
+<div class="quiz">
+  <p class="q"><span class="tag">场景 3</span>团队赶一个发布会，CTO 说：「这两个月先快速堆，之后我们会有专门的重构季度。」最符合本书的回应是？</p>
+  <button data-why="书中确实反对「以后雇人清理」，但它的立场不是拒绝交付。把两个月定性为纯战术期，等于把滑坡正式写进流程，而作者认为这条滑坡一旦开始就几乎无法回头。">反对：两个月战术化之后很可能已经修不动了</button>
+  <button data-ok="1" data-why="这正是书的立场：不要求停止交付，而是要求每次改动都保留 10–20% 的设计投入。好设计和坏设计的回报都很快，不需要等到重构季度。">接受节奏，但坚持每次改动都留出设计投入</button>
+  <button data-why="这是把战术编程包装成了流程。书中的关键论点是：设计投资不是可以被推迟到某个阶段的事，它必须发生在写代码的当下。">接受，交付优先于设计，重构季度可以补回来</button>
+  <p class="feedback"></p>
+</div>
+
+<div class="key">
+<p><strong>可以贴进 code review 的原话：</strong>「这次改动只花五分钟就能把这条知识收进一个模块，为什么不留到下次？按 10–20% 的投资比例，这属于当场就该做的那一半。」</p>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>接下来</h2>
+
+<p>态度的部分讲完了。第 4 章开始给尺子：什么叫一个<strong>好模块</strong>。答案是全书最著名的那句话：<em>模块应该是深的</em>。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch03.html">第 3 章 工作代码是不够的（中文全译）</a> — 作者关于投资比例的具体测算在原文里更完整，值得读一遍原文的数字段落。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">最有效的用法：下一次你写新模块时，把两种接口写法（只要签名，不要实现）都发我，我们一起看哪个更深。实践一次胜过读十遍。</p>
+
+  <div class="nav-links">
+    <span><a href="0002-symptoms-of-complexity.html">← L2 · 复杂性的症状与成因</a></span>
+    <span><a href="0004-modules-should-be-deep.html">L4 · 模块应该是深的 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

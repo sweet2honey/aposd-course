@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L5 · 信息隐藏（和泄漏） — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 5 章 · 课程 5 / 21</p>
+
+<h1>信息隐藏（和泄漏）</h1>
+<p class="standfirst">怎么造出深模块？答案来自 1972 年的一篇论文：每个模块藏起一个设计决策。而它最常见的失败方式，藏在你的目录结构里。</p>
+
+<h2><span class="num">5.1</span>一条 1972 年的原则</h2>
+
+<p>Parnas 的原始表述，本书的转述是：</p>
+
+<blockquote>
+<p>每个模块应当封装一些知识，这些知识代表一个设计决策。这些知识被嵌入模块的实现中，不出现在它的接口里。</p>
+</blockquote>
+
+<p>「知识」具体指什么？书里给了一串：</p>
+
+<ul>
+  <li>B 树如何存储数据</li>
+  <li>逻辑块编号如何映射到物理磁盘块</li>
+  <li>TCP 如何实现可靠传输</li>
+  <li>多核上线程如何调度</li>
+  <li>JSON 如何被解析</li>
+</ul>
+
+<p>共同点：<strong>都是「怎么做」的决定，而使用者只需要知道「做什么」。</strong></p>
+
+<div class="excerpt">
+<span class="src">第 5 章 · 信息隐藏的双重收益</span>
+<p>信息隐藏在两个方面降低了复杂性。首先，它简化了模块的接口，接口用更简单、更抽象的方式反映了模块的功能，减少了使用者的认知负担。其次，信息隐藏使系统更容易演化：如果隐藏了一段信息，那么在包含该信息的模块之外就不存在对该信息的依赖，因此与该信息相关的设计更改将只影响一个模块。</p>
+</div>
+
+<div class="key">
+<p>信息隐藏有双重收益：<br>
+① <strong>简化接口</strong>——使用者要知道的事变少（降认知负荷）；<br>
+② <strong>便于演化</strong>——被藏起来的信息在模块外没有依赖，所以可以改。</p>
+</div>
+
+<p>第二条常被低估：一个决策只活在一个模块里，改它只改一处；泄漏到三个模块，就要同时改三处——这就是第 2 章的<strong>变更放大</strong>，也是「改一个需求要动好几处、怕漏」的直接病根。</p>
+
+<div class="card">
+<h4>两个常见误解</h4>
+<p><strong>① private ≠ 信息隐藏。</strong>给每个字段配 getter/setter，看起来封装了，实际上把内部表示完整地暴露成了公开接口。真正的隐藏是：外部<strong>不需要</strong>知道那个字段。</p>
+<p><strong>② 部分隐藏也有价值。</strong>不是非黑即白。少暴露一点，就少一点耦合。你能决定「只藏 70%」——只要那 70% 是真的没人需要。</p>
+</div>
+
+<h2><span class="num">5.2</span>信息泄漏：最重要的红旗</h2>
+
+<p>泄漏的定义：<strong>一个设计决策反映在多个模块中</strong>。这时模块之间就有了依赖——而这层依赖不在任何签名里，所以编译器、链接器、测试都帮不了你。</p>
+
+<table>
+  <thead><tr><th>形态</th><th>表现</th><th>隐蔽程度</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>接口泄漏<br><span class="term">interface leakage</span></td>
+      <td>那个决策出现在了公开签名/类型里</td>
+      <td>明显，评审时容易发现</td>
+    </tr>
+    <tr>
+      <td><strong>后门泄漏</strong><br><span class="term">backdoor leakage</span></td>
+      <td>两个模块都懂同一种格式/算法，但接口上看不出来</td>
+      <td><strong>危险</strong>：签名干净，耦合藏在实现里</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>后门泄漏更危险的原因很实在：它<strong>不会让编译失败，也不会让测试变红</strong>。你只会在某个下午发现「协议加了个字段」要同时改四个文件。</p>
+
+<p>对策两条，按优先级：</p>
+<ol>
+  <li><strong>合并</strong>相关类——它们共享同一个知识，就让它们成为一个模块。首选，同时减少模块数和泄漏面。</li>
+  <li><strong>抽出</strong>一个只封装该知识的新类。<em>前提</em>是能为它设计出简单接口，否则只是把后门泄漏换成接口泄漏，白添一层。</li>
+</ol>
+
+<p>顺序不能反：接口设计不出来（两边需要的信息不对称）时硬抽，结果是三个模块各持有半个知识，比原来更糟。</p>
+
+<h2><span class="num">5.3</span>时间分解：最隐蔽的泄漏源</h2>
+
+<p>这是本章最实用的诊断工具，也是「模块拆得不对越拆越乱」的直接答案。</p>
+
+<p><strong>时间分解</strong> = 按操作发生的<em>时间顺序</em>划分模块。看起来非常自然，正因为它自然，所以特别容易中招。</p>
+
+<div class="card">
+<h4>文件编辑器的经典错误</h4>
+<p>「读文件 → 修改 → 写文件」，于是拆成三个类：<code>Reader</code>、<code>Modifier</code>、<code>Writer</code>。</p>
+<p>问题：<code>Reader</code> 和 <code>Writer</code> <strong>都必须理解文件格式</strong>。格式这个设计决策泄漏到了两个模块。改格式要改两处，且两处必须保持一致。</p>
+<p>正确做法：把读写的核心机制合进一个类——不管它叫什么，至少格式知识只活在一处。</p>
+</div>
+
+<div class="excerpt">
+<span class="src">第 5 章 · 按知识划分，而不是按时序</span>
+<p>在时间分解中，系统的结构对应于操作将要发生的时间顺序。考虑一个以特定格式读取文件、修改内容、再写出新版本的应用程序。按时间分解，它可分为三类：一类读文件，一类执行修改，第三类写出新版本。读取和写出这两个步骤都具有关于文件格式的知识，这会导致信息泄漏。解决方案是把用于读写文件的核心机制结合到一个类中。因为在编写代码时通常先想到必须执行操作的顺序，所以很容易陷入时间分解的陷阱。</p>
+</div>
+
+<div class="key">
+<p><strong>判断模块边界的正确问题：</strong>不是「这些操作在运行时按什么顺序发生」，而是「<em>执行这个任务需要哪些知识</em>」。把共享同一知识的代码放在一起，哪怕它们的执行时机相隔很远。</p>
+</div>
+
+<div class="card">
+<h4>HTTP 服务器的例子</h4>
+<p>常见错误：拆成一堆浅模块，一部分负责「从 socket 读字节」，另一部分负责「解析 HTTP」。</p>
+<p>为什么是时间分解？因为你要知道请求体的总长度，<strong>必须先解析头部</strong>的 <code>Content-Length</code>。于是两个模块都懂请求结构，解析代码重复，调用者还得按正确顺序调两次。</p>
+<p>正确做法：合并成一个模块。它更深（接口简单：给一个 fd，给我一个请求），而且只有它懂 HTTP。</p>
+</div>
+
+<p>在 C 里，它经常表现为两个 <code>.c</code> 各有一份「读取直到 <code>\r\n\r\n</code>」的循环：</p>
+
+<pre><code>/* http_conn.c */
+while (!memmem(wbuf, wlen, "\r\n\r\n", 4)) wlen += read(fd, wbuf + wlen, ...);
+
+/* http_parse.c —— 同一件事，第二遍 */
+for (i = 0; i &lt; len - 3; i++)
+    if (!memcmp(buf + i, "\r\n\r\n", 4)) break;</code></pre>
+
+<p>两份都懂「头部以空行结束」这条协议知识。要加 HTTP/2 前缀（<code>PRI * HTTP/2.0\r\n\r\nSM\r\n\r\n</code>），两处都得改。这就是后门泄漏最标准的样子。</p>
+
+<h2><span class="num">5.4</span>参数处理：好与坏的分界线</h2>
+
+<p>书里用 HTTP 请求的参数处理把「深」和「浅」摆在一起对比。这是全章最适合拿来做评审范本的一段。</p>
+
+<p><strong>好的隐藏：</strong></p>
+<ul>
+  <li>隐藏「参数在 URL 首行还是在 body 里」的差别——调用方不用关心。</li>
+  <li>隐藏 URL 编码。你拿到的是 <code>What a cute baby!</code>，不是 <code>What+a+cute+baby%21</code>。后者是把传输格式漏给了使用者。</li>
+</ul>
+
+<p><strong>坏的暴露：</strong>把一个内部容器直接交出去。原书用 Java 举例（<code>getParams()</code> 返回 <code>Map</code>），形状在 C++ 里一模一样：</p>
+
+<pre><code>class HttpRequest {
+public:
+    /* 一次犯四个错 */
+    const std::unordered_map&lt;std::string, std::string&gt;&amp;
+    params() const { return params_; }
+private:
+    std::unordered_map&lt;std::string, std::string&gt; params_;
+};</code></pre>
+
+<p>一次犯四个错：</p>
+<ol>
+  <li><strong>接口浅</strong>：没有抽象任何东西，只是把成员的引用转发出去。</li>
+  <li><strong>调用方还得再查一次表</strong>：每个取值点都写 <code>.find()</code> 判 <code>end()</code>。</li>
+  <li><strong>不该改却拦不住</strong>：<code>const&amp;</code> 会随对象生命周期失效；非 const 引用还能让调用方改你的内部状态。</li>
+  <li><strong>无法做类型转换或校验</strong>：值全是字符串，每个调用方各自 <code>std::stoi</code>、各自处理缺失。</li>
+</ol>
+
+<p>改成窄接口，把四件事一次收进去：</p>
+
+<pre><code>class HttpRequest {
+public:
+    /* 拿到或 throw；调用方不用判存在性 */
+    const std::string&amp; param(std::string_view name) const;
+    /* 缺失时返回 def；格式错时 throw */
+    long   param_int(std::string_view name, long def = 0) const;
+    bool   has_param(std::string_view name) const;
+    bool   param_bool(std::string_view name, bool def = false) const;
+private:
+    std::unordered_map&lt;std::string, std::string&gt; params_;  /* 藏起来 */
+};</code></pre>
+
+<p>现在 <code>params_</code> 在头文件里根本不存在。把它从 <code>unordered_map</code> 换成小数组加线性扫描（HTTP 参数通常不到 10 个，线性扫描常常更快），调用方一行都不用改——<strong>这就是信息隐藏的第二重收益：演化自由。</strong></p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>/* config.h —— 一个「方便」的配置模块 */
+struct config {
+    std::unordered_map&lt;std::string, std::string&gt; kv;
+};
+
+const std::unordered_map&lt;std::string, std::string&gt;&amp;
+config_all(const struct config *c);
+
+/* 调用方 A */
+auto &amp;all = config_all(cfg);
+int timeout = std::stoi(all.at("timeout_ms"));     /* 缺失就抛 */
+bool verbose = all.count("verbose") &amp;&amp; all.at("verbose") == "true";
+
+/* 调用方 B —— 同一件事，写法不一样 */
+const char *t = getenv("TIMEOUT");                  /* 又来一条路 */
+int timeout2 = t ? atoi(t) : 3000;                  /* 单位还是 ms */
+if (strcasecmp(cfg_get_raw(cfg, "verbose"), "1") == 0) { }  /* 第三套 */</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>配置的<em>表示</em>（字符串 map）和<em>语义</em>（单位、布尔写法、缺失默认值）被完整交给了每个调用方。「<code>verbose</code> 用什么词算真」于是散落在十几个文件里：有人认 <code>"true"</code>、有人认 <code>"1"</code>、有人认 <code>"yes"</code>。</p>
+<p>这就是痛点①的教科书现场：产品说「默认超时改成 5 秒」，你得 grep 全仓找 <code>stoi</code>、"timeout"、<code>atoi</code>、<code>getenv</code> 四种写法，然后赌自己没漏，编译器一句都不提醒。更深一层：A 的 <code>at()</code> 在键缺失时抛异常，B 的 <code>atoi</code> 静默返回 0——同一份配置，两种失败语义。</p>
+</div>
+</div>
+<p>改法：把 map 挪进 <code>.cpp</code> 的匿名命名空间，头文件只留 <code>cfg_int(c, "timeout_ms", 3000)</code>、<code>cfg_bool(c, "verbose", false)</code>、<code>cfg_str(c, "log_path", "…")</code>。查表、解析、缺失回退、格式错误上报全在里面，<code>verbose</code> 认哪些词只在一个函数里决定。改动约三十行，换回「默认值 / 单位 / 布尔写法」三个决策各归一处。</p>
+</div>
+
+<h2><span class="num">5.5</span>默认值也是一种隐藏</h2>
+
+<p>一个容易忽略的点：让调用者<strong>显式指定</strong>那些本可以自动推断的东西，是一种泄漏。</p>
+
+<ul>
+  <li>要求调用方传 HTTP 版本？错。应该从请求里推出来。</li>
+  <li>要求调用方自己设 <code>Date</code> 头？错。库应该自动加。</li>
+</ul>
+
+<p>在底层代码里，这条原则最常被违反的形式是「把缓冲区大小交给调用方」：</p>
+
+<pre><code>/* 调用方得一拍脑袋决定传 64 还是 4096 还是 65536 */
+int format_stat(char *out, size_t cap, const struct stat *st);</code></pre>
+
+<p>这个签名不算错（有些场合确实要控制），但它泄漏了「输出最长多少」这个知识。如果 99% 的调用方都传 <code>char buf[256]</code>，更好的接口是返回 <code>std::string</code>，或写进调用方给的 <code>std::string&amp;</code>。原则很好记：<strong>默认值让常见情况变简单，同时也是部分信息隐藏</strong>——使用者不需要知道那个值是怎么来的。书里那句话值得抄下来：</p>
+
+<blockquote>
+<p>最好的功能是你不知道它存在的功能。</p>
+</blockquote>
+
+<p>顺着这条走到极端，就是本章最后那句真正解放人的结论：如果一个模块能自己判断该用哪种策略，那就别把选择权交出去。</p>
+
+<h2><span class="num">5.6</span>走得太远</h2>
+
+<p>「走得太远」的关键提醒是：<strong>只在模块外部确实不需要时才隐藏</strong>。硬藏只会逼使用者绕过你——去 <code>#include</code> 私有头、或复制一份实现，那比泄漏更糟。更好的答案是让<strong>模块自己判断</strong>用哪种策略。</p>
+
+<p>对照一下：</p>
+
+<table>
+  <thead><tr><th>写法</th><th>谁做决定</th><th>结果</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>set_buffer_size(64 * 1024)</code></td>
+      <td>每个调用方</td>
+      <td>有人传 64，有人传 4096，有人忘了调；性能随调用点漂移</td>
+    </tr>
+    <tr>
+      <td>模块内部按 <code>st_blksize</code> 自适应</td>
+      <td>模块</td>
+      <td>默认就对；真要覆盖时再给一个 <code>override</code> 入口</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>第二行才是信息隐藏。第一行看着「灵活」，实际是把本该属于模块的判断摊给所有调用方去猜，猜错没有提示。</p>
+
+<h2><span class="num">5.7</span>这一章怎么治「评审说不出所以然」</h2>
+
+<p>你知道这里不对，但说不出为什么，于是对方一句「这样也能跑」就把你堵回去。这一章给了三个能当场念的句式：</p>
+
+<table>
+  <thead><tr><th>你怀疑的事</th><th>评审原话</th><th>为什么不是主观意见</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>两处都在解析同一种格式</td>
+      <td>「格式这个决策现在活在两个模块里，改一次要改两处——这是后门泄漏。」</td>
+      <td>可以当场指出第二处代码位置，可验证</td>
+    </tr>
+    <tr>
+      <td>接口返回了内部容器</td>
+      <td>「调用方拿到 <code>const&amp;</code> 之后，内部表示就不能换了。能不能给取值函数？」</td>
+      <td>说的是演化成本，不是审美</td>
+    </tr>
+    <tr>
+      <td>拆成 Reader / Parser / Writer</td>
+      <td>「这是按时间顺序拆的。它们共享格式知识，能不能合并？」</td>
+      <td>有名字的模式，第 5 章原文可引</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>共同结构：<strong>指明被泄漏的决策是什么</strong>、<strong>指出它在哪几处重复</strong>、<strong>给出更小的边界</strong>。有了结构，「我觉得不太好」就成了可讨论的技术判断。</p>
+
+<hr>
+
+<h2><span class="num">练习</span>找泄漏</h2>
+
+<p>四个设计。判断有没有信息泄漏，以及属于哪种。</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p><code>ImageReader</code> 和 <code>ImageWriter</code> 各自实现了一遍 PNG 的 chunk 解析逻辑。</p>
+    <div class="opts">
+      <button>无泄漏</button>
+      <button data-ok="1">后门泄漏</button>
+      <button>接口泄漏</button>
+    </div>
+    <p class="note">两个类都懂 PNG 格式，但签名上看不出来——这是后门泄漏，也是最难在评审里发现的那种。典型的「时间分解」：读在前、写在后，于是被拆开。</p>
+  </div>
+
+  <div class="row">
+    <p>一个仓储模块的查询函数返回类型是 <code>Row</code>，字段与数据库表一一对应，包括 <code>created_at_unix_ms</code>。</p>
+    <div class="opts">
+      <button>无泄漏</button>
+      <button>后门泄漏</button>
+      <button data-ok="1">接口泄漏</button>
+    </div>
+    <p class="note">存储格式直接出现在公开签名里。后果：换数据库或换时间表示，所有调用方都要改。修法不是「加个 DTO 就完事」，而是问：调用方真正需要知道的是什么？</p>
+  </div>
+
+  <div class="row">
+    <p>一个 <code>Config</code> 模块，<code>all()</code> 返回内部的 <code>unordered_map</code> 引用，调用方自己 parse 成 int / bool / 列表。</p>
+    <div class="opts">
+      <button>无泄漏</button>
+      <button data-ok="1">接口泄漏</button>
+      <button>不是泄漏，只是不方便</button>
+    </div>
+    <p class="note">解析规则（5.4 节那个 map 例子的同构版本）被推给了每个调用方：格式知识散落各处，于是<strong>一处要改处处要改</strong>。而且每个调用方都要自己处理「这个值不存在」和「这个值不是数字」。改成 <code>cfg_int(c, key, def)</code> 就都收进去了。</p>
+  </div>
+
+  <div class="row">
+    <p>一个 <code>Tokenizer</code>，内部有状态机处理引号、转义和嵌套；对外只有 <code>next()</code> 和 <code>peek()</code>。</p>
+    <div class="opts">
+      <button data-ok="1">无泄漏，而且很深</button>
+      <button>后门泄漏</button>
+      <button>接口泄漏</button>
+    </div>
+    <p class="note">状态机的所有细节都在内部，接口两个方法。这是信息隐藏做得好的标准形态——注意它同时也满足第 4 章的「深」。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>改一个设计</h2>
+
+<div class="recall">
+<p>你手上有一个 <code>ReportGenerator</code>，它读取数据库、算出统计、渲染成 HTML 并写到文件。四个步骤都在一个 600 行的模块里。用第 5 章的视角：它<b>该</b>怎么拆？</p>
+<p class="hint-inline">提示：先别按「读 → 算 → 渲染 → 写」这个顺序拆。</p>
+<textarea placeholder="共享的知识是什么？哪些决策应该各自关起来？"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p>关键不是「按执行顺序切成四块」——那正是时间分解，会把统计口径、数据结构、渲染格式这些知识泄漏到多个模块里。</p>
+<p>先问：<strong>有哪些设计决策？</strong>至少有四个——数据表结构、统计口径（哪些指标、怎么定义）、HTML 版式、输出媒介。</p>
+<p>然后让每个决策只活在一个地方：</p>
+<ul>
+  <li>一个模块负责「把查询结果变成统计对象」——它藏起表结构和口径；</li>
+  <li>一个模块负责「把统计对象变成 HTML」——它藏起版式；</li>
+  <li>写文件那一步通常不需要单独一个模块，除非它有真正的策略（压缩、分片、原子替换）。</li>
+</ul>
+<p>判据：如果你把输出改成 PDF，应该只碰一个模块；如果你改统计口径，也应该只碰一个。<strong>哪一个改动会牵动几个模块，就说明那个知识没有被藏好。</strong></p>
+<p>另一个诚实的选择：如果这个报表只会存在三个月，那么它可能<strong>不该拆</strong>——600 行里没有第二个使用者，就没有需要隐藏的接口。这才是第 3 章「投资」与「YAGNI」的交界处。</p>
+</div>
+</div>
+
+<div class="key">
+<p><strong>可以贴进 code review 的原话：</strong>「这份格式知识现在活在两个模块里——改一处协议字段要改两处，而且是靠人记。能不能把它收进一个模块，让两边的调用方都只看到取值函数？」</p>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>前五章到此结束</h2>
+
+<p>回头看这条线：复杂性是唯一的敌人（L1）→ 它有可观察的症状和成因（L2）→ 对抗它需要持续投资（L3）→ 投资的产物是深模块（L4）→ 深模块靠信息隐藏实现（L5）。</p>
+
+<p>下一段路从第 6 章开始：<em>通用模块更深入</em>，以及第 7 章 <em>不同的层，不同的抽象</em>——那里会处理一个你现在可能已经有的疑问：「有时候就是需要一点重复，这算泄漏吗？」</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch05.html">第 5 章 信息隐藏（和泄漏）（中文全译）</a> — HTTP 服务器那一段的代码骨架在原文里更完整，值得对着读。</p>
+  <p><a href="https://www.win.tue.nl/~wstomv/edu/2ip30/references/criteria_for_modularization.pdf">Parnas 1972 原始论文（PDF）</a> — 15 页，信息隐藏的源头。读完你会发现本书第 5 章几乎是它的注解。</p>
+  <p><a href="../reference/ch1-5-cheatsheet.html">第 1–5 章速查表</a> — 五个概念放在一页里，「泄漏 / 深 / 有效复杂度」可以横向对照。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">最有价值的一次练习：把你项目里两个「看起来各管一摊、但改格式时都要动」的模块贴给我。我们来找那条隐藏的知识，然后决定合并还是抽出。</p>
+
+  <div class="nav-links">
+    <span><a href="0004-modules-should-be-deep.html">← L4 · 模块应该是深的</a></span>
+    <span><a href="0006-general-modules.html">L6 · 通用模块更深入 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

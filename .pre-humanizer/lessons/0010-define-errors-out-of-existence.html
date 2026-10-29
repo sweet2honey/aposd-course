@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L10 · 通过定义规避错误 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 10 章 · 课程 10 / 21</p>
+
+<h1>通过定义规避错误</h1>
+<p class="standfirst">错误处理是复杂性的最大单一来源。最狠的减法不是把 <code>if err</code> 写得更短，而是让那个错误条件根本不存在——改定义，不改代码。</p>
+
+<h2><span class="num">10.1</span>为什么异常特别贵</h2>
+
+<p>先承认一个事实：处理特殊情况的代码，本来就比处理正常流程的代码难写。它出现的时刻，程序正处于你不熟悉的路径上。书里说，在大型系统里（尤其是分布式、需要容错的系统），异常处理可能占到全部代码的相当大比例。</p>
+
+<p>更麻烦的是它会<strong>生异常</strong>。书里的例子：网络包丢了 → 重发 → 其实没丢、只是延迟 → 现在对端收到重复包 → 一个新的异常条件。或者：数据坏了 → 从冗余副本恢复 → 副本也坏了怎么办？</p>
+
+<p>还有两个结构性代价，底层读者会立刻认出来：</p>
+
+<ul>
+  <li><strong>异常是接口的一部分。</strong>一个抛很多异常的类，接口就复杂，也比异常少的类更浅——而且异常会穿过好几层栈帧，影响的不只是直接调用者。</li>
+  <li><strong>处理代码几乎不被执行。</strong>书里引了一句很狠的话：<em>「未执行的代码是无效的」</em>。异常路径在测试里很难造，在生产里很罕见，于是它长期处于「写了但没验证」的状态。有一项研究指出，分布式数据密集型系统里超过 90% 的灾难性故障源于错误处理本身出错。</li>
+</ul>
+
+<div class="key">
+<p>所以这章的靶心不是「把错误处理写好」，而是<strong>减少「必须处理错误的地方」的数量</strong>。数量降下来，质量才有机会。</p>
+</div>
+
+<div class="excerpt">
+<span class="src">第 10 章 · 为什么异常贡献了不成比例的复杂性</span>
+<p>抛出异常很容易，处理异常却很困难。因此，异常的复杂性来自处理异常的代码。减少由异常处理引起的复杂性破坏，最好的办法就是减少必须处理异常的位置的数量。</p>
+<p>异常是接口里特别复杂的元素：它可能在被人捕获之前穿过好几个栈层，所以它不只影响方法的直接调用者，还可能影响更高层的调用者——以及它们的接口。</p>
+</div>
+
+<h2><span class="num">10.2</span>招式一：改定义，让错误不存在</h2>
+
+<p>这是本章同名的一招，也是最反直觉的一招。核心动作：<strong>重新定义操作的含义，使「异常情况」变成正常情况的一种。</strong></p>
+
+<h3>书里的三个例子</h3>
+
+<div class="card">
+<h4>Tcl 的 <code>unset</code></h4>
+<p>原定义：「删除一个变量」。变量不存在时，它无法完成工作 → 报错。于是所有人都在 <code>catch</code> 里包一层来忽略这个错。</p>
+<p>改定义：「<em>确保</em>这个变量不再存在」。变量本来就不存在？工作已经完成了，直接返回。错误消失。</p>
+</div>
+
+<div class="card">
+<h4>Unix 的 <code>unlink</code></h4>
+<p>Windows 不允许删除正在被打开的文件——于是用户要去任务管理器里找进程，甚至重启机器。</p>
+<p>Unix 改的是「删除」的定义：把文件名从目录里摘掉、把 inode 标记为待删，已经打开的文件描述符继续可读可写，最后一个关闭时才释放数据。<strong>一下子规避了两个错误</strong>：删除不再因为「文件在用」而失败；正在用文件的进程也不会突然拿到一个坏 fd。</p>
+</div>
+
+<div class="card">
+<h4>Java 的 <code>substring</code>（书里的反例）</h4>
+<p>索引越界就抛 <code>IndexOutOfBoundsException</code>。可调用方常常只是想「取出与这个范围重叠的部分」，于是每次都得先 clamp 两个索引——一行变成五到十行。</p>
+<p>把定义改成「返回下标 ≥ begin 且 &lt; end 的字符（如果有）」之后，越界、负值、begin &gt; end 全部有了明确行为。接口更简单，功能反而更多——<strong>方法变深了</strong>。</p>
+</div>
+
+<p>第三个例子在 C++/Rust 里有直接的对照物，而且值得当作模板记住：</p>
+
+<pre><code>// 会 panic / 会 UB 的写法：调用方必须自己保证范围合法
+const std::byte* slice(const std::byte* p, size_t len,
+                       size_t begin, size_t end);   // end &gt; len 就完了
+
+// 改定义：怎么给都行，交集之外自动忽略
+std::span&lt;const std::byte&gt; slice(std::span&lt;const std::byte&gt; s,
+                                size_t begin, size_t end) {
+    if (begin &gt; s.size()) begin = s.size();
+    if (end   &gt; s.size()) end   = s.size();
+    if (begin &gt; end)      begin = end;
+    return s.subspan(begin, end - begin);   // 空区间是合法结果
+}</code></pre>
+
+<p>四个字节的边界处理，换掉了每一个调用点的两行 clamp，以及一类「忘了 clamp」的崩溃。而且注意最后那一步：<strong>空区间是合法返回值</strong>，不是错误——这就是 10.5 要讲的「消灭特殊情况」。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>// 「找不到就是错误」——最直觉、也最贵的定义
+enum class Err { NotFound, Io, Corrupt };
+
+Result&lt;Entry&gt; get(const std::string&amp; key);   // 键不存在 → NotFound
+
+// 于是每个调用点都长这样：
+auto r = cache.get(k);
+if (!r) {
+    if (r.error() == Err::NotFound) {
+        // 99% 的调用点在这里做的事完全一样：当成「没有」继续
+        return default_value();
+    }
+    return propagate(r.error());
+}</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>① 「键不存在」是<strong>正常情况</strong>，不是异常——字典本来就是这么用的；把它编码成错误，强迫每个调用点做一次无意义的分类（变更放大：新增一种「可以当空处理」的错误，全体调用点都要改）；② <code>Err::NotFound</code> 与真正的 IO 错误混在同一个通道里，调用方一不小心就把「硬盘挂了」当成「没这个键」吞掉——这正是那 90% 灾难性故障的形状；③ 想加缓存/预取/批量查询，都得先处理这个假错误。</p>
+</div>
+</div>
+<p>改法：<strong>把「不存在」从错误里拿出去。</strong></p>
+<pre><code>std::optional&lt;Entry&gt; get(const std::string&amp; key);   // 不存在 → nullopt
+Result&lt;Entry&gt;        get_or_io(const std::string&amp; key);  // 只剩真错误</code></pre>
+<p><code>optional</code> 是「正常缺失」，<code>Result</code> 是「真出事了」。调用方不再需要分类，编译器也不再允许它把两者混淆。这不是把错误藏起来——而是把它<strong>归到正确的那一类</strong>。</p>
+</div>
+
+<h2><span class="num">10.3</span>招式二：异常屏蔽</h2>
+
+<p>在低层就地处理掉，让高层根本不知道发生过。TCP 是标准例子：丢包由重传在内部消化，上层看到的是「可靠的字节流」。</p>
+
+<p>书里还有一个更有争议的例子：NFS 服务器挂了，客户端就一遍遍地重试，应用程序<strong>挂起</strong>，直到服务器恢复。用户在控制台看到「NFS server not responding, still trying」。</p>
+
+<p>书里为这个设计辩护的逻辑值得完整跟一遍，因为它是「屏蔽」这一招的判据：</p>
+
+<ol>
+  <li>如果报错上去，应用能做什么？它也访问不了文件，什么都做不了。</li>
+  <li>让应用自己重试？那还是挂起，而且在每个应用、每个文件系统调用点各重试一遍，比在 NFS 层重试一次难得多。</li>
+  <li>让应用中止、把错误返回给用户？用户也不知道怎么办，只会把整个工作环境搞崩；服务器恢复后还得重启所有应用。</li>
+  <li>所以最好的选择就是挂起 + 屏蔽：应用不需要任何代码，服务器恢复后无缝继续。用户等烦了可以自己杀进程。</li>
+</ol>
+
+<div class="excerpt">
+<span class="src">第 10 章 · 异常屏蔽</span>
+<p>在它能起作用的情况下，异常屏蔽是一个强大的工具。它让类变得更深：减少了类接口中用户需要关心的异常，同时以「掩盖异常的代码」的形式增加了功能。异常屏蔽是降低复杂性的一个实例。</p>
+<p>但它并非在所有情况下都有效。（后文补充：屏蔽只在「模块外部不需要这个异常信息」时才成立。）</p>
+</div>
+
+<p>最后那句限定是整章的护栏。书里给了一个反面案例：一个学生团队把<em>所有</em>网络异常都吞掉，于是使用该模块的应用<strong>无法知道消息到底丢了没有</strong>——没有这个信息，就写不出健壮的分布式应用。这时候必须把异常暴露出去，即使它让接口更复杂。</p>
+
+<div class="key">
+<p>判断能不能屏蔽，只问一句：<strong>模块外面的代码，需要这个信息才能做对决定吗？</strong> 不需要 → 屏蔽；需要 → 必须暴露，而且要暴露得清楚。</p>
+</div>
+
+<h2><span class="num">10.4</span>招式三：异常聚合</h2>
+
+<p>不在每个可能出错的地方各写一个 handler，而是让异常往上传播，在<strong>一个能覆盖最多情况的地方</strong>统一处理。</p>
+
+<p>书里的 Web 服务器例子：每个 URL 处理方法都调 <code>getParameter</code>，缺参数就抛 <code>NoSuchParameter</code>。学生的写法是每个调用点包一个 <code>try</code>，结果一大片几乎相同的错误处理代码。修法是让异常传播到顶层 dispatcher，那里一个 handler 处理所有缺参数的情况。</p>
+
+<p>更进一步：缺参数、类型不对、无权限，都应该产出「错误响应」，差别只在错误消息上。所以它们可以<strong>共用同一个顶层 handler</strong>，消息在抛出时生成、随异常带上来。顶层 handler 负责「怎么构造错误响应」，却对具体错误一无所知；<code>getParameter</code> 负责「怎么解析参数、怎么描述错误」，却不懂 HTTP 响应格式。这是漂亮的信息隐藏。</p>
+
+<p>Rust 里这个模式几乎是默认写法，值得对照：</p>
+
+<pre><code>// 每个 handler 只管自己的语义，错误用 ? 往上抛
+fn get_quantity(req: &amp;Req) -&gt; Result&lt;u32, ApiError&gt; {
+    let raw = req.param("quantity").ok_or(ApiError::Missing("quantity"))?;
+    raw.parse().map_err(|_| ApiError::BadType("quantity", "正整数"))?
+}
+
+// 一个地方统一转成 HTTP 响应
+fn serve(req: &amp;Req) -&gt; Response {
+    match route(req) {
+        Ok(body) =&gt; Response::ok(body),
+        Err(e)   =&gt; Response::bad_request(e.to_string()),  // 消息由底层生成
+    }
+}</code></pre>
+
+<p>书里还给了 RAMCloud 的例子，思路更激进：不做「单个对象损坏」的细粒度恢复，而是<strong>主动把服务器搞崩</strong>，走统一的崩溃恢复。理由是最小化「必须实现的不同恢复机制的数量」，而且崩溃恢复会被更频繁地执行，bug 更容易被发现。代价是恢复成本变高——所以它只在对象损坏极罕见时才划算。</p>
+
+<p>书里对这个权衡的总结很值得抄下来：<strong>把频繁发生的错误升级成崩溃是不现实的</strong>（比如「丢一个包就崩服务器」）。聚合的前提是这个错误足够罕见。</p>
+
+<h2><span class="num">10.5</span>招式四：让它崩</h2>
+
+<p>有些错误不值得处理。它们极罕见、极难处理，而且发生了你也不知道能做什么。</p>
+
+<p>书里最硬的例子是 <code>malloc</code> 返回 <code>NULL</code>。这是一个不合适的设计，因为它假设<strong>每个调用者</strong>都会检查返回值并采取恰当措施。而现实是：调用点成百上千，漏检一个就是空指针解引用，把真正的问题掩盖掉。何况内存耗尽时应用也没什么能做的——如果它有不需要的内存，早就该释放了。</p>
+
+<p>书里给的替代方案是 <code>ckalloc</code>：调用 <code>malloc</code>、检查结果、失败就打印诊断并中止。应用永远不直接调 <code>malloc</code>。</p>
+
+<pre><code>[[noreturn]] void oom(size_t n) {
+    std::fprintf(stderr, "fatal: out of memory allocating %zu bytes\n", n);
+    std::abort();
+}
+
+void* ckalloc(size_t n) {
+    void* p = std::malloc(n);
+    if (!p) oom(n);
+    return p;
+}</code></pre>
+
+<p>同样该直接崩的还有：磁盘硬错误、无法打开网络套接字、内部数据结构不一致。这类事情的共同点是——<strong>继续运行没有意义，而清晰的崩溃信息比勉强运行有价值得多。</strong></p>
+
+<p>但书里立刻补了限定：这取决于应用。复制存储系统不能因为一个 I/O 错误就中止，它必须用副本恢复——恢复机制的复杂性是它提供给用户的价值的一部分。</p>
+
+<div class="key">
+<p>四种招式不是并列的选项，而是一条按「代价」排序的决策链：<br>
+① 能改定义消掉吗？→ ② 能在低层屏蔽吗？→ ③ 能聚合到一个 handler 吗？→ ④ 值得处理吗，还是该崩？<br>
+先问前面的，前面的代价最小。</p>
+</div>
+
+<h2><span class="num">10.6</span>特殊情况，不只是异常</h2>
+
+<p>本章最后把话题从「异常」推广到「特殊情况」——这一节对底层代码最有价值，因为它讲的是 <code>if</code>。</p>
+
+<p>书里的例子是文本选区的「有没有选中」。学生的实现引入一个布尔 <code>has_selection</code>，于是到处都要检查「没有选区」这个特殊情况。</p>
+
+<p>修法是<strong>让选区永远存在</strong>：没有可见选区时，用一个空选区表示（起止位置相同）。于是：</p>
+
+<ul>
+  <li>复制：空选区就插入 0 字节——如果实现正确，0 字节天然不需要特判；</li>
+  <li>删除：取选区前的部分 + 选区后的部分拼接。空选区时正好还原出原行。</li>
+</ul>
+
+<p>这就是「通过定义规避错误」在控制流层面的版本：<strong>让「特殊情况」成为正常情况的退化形式</strong>，而不是一个需要单独分支的类别。</p>
+
+<pre><code>// 有特殊情况：到处 if
+struct Selection { Pos begin, end; bool empty; };   // empty 与 begin==end 可能不一致
+
+if (!sel.empty) { buffer.erase(sel.begin, sel.end); }
+
+// 无特殊情况：空选区自然退化
+struct Selection { Pos begin, end; };               // 不变式：begin &lt;= end
+buffer.erase(sel.begin, sel.end);                    // begin==end 时什么都不删</code></pre>
+
+<p>注意第二版还顺手消灭了一个 bug 类别：<code>empty</code> 与 <code>begin==end</code> 不一致的非法状态。书里在第 7 章说过「抽象应该在每一层不同」——「没有选区」这个概念在<strong>用户视角</strong>下是真实的，但没有必要在<strong>实现</strong>里也显式表示。</p>
+
+<div class="card">
+<h4>这个思路在底层代码里的三个对应物</h4>
+<p><strong>① 空容器而非 null。</strong> 返回 <code>std::span{}</code> / 空 <code>Vec</code>，而不是「可能为空」的指针——调用方少一次判空。</p>
+<p><strong>② 长度为 0 的写入是合法的。</strong> <code>write(fd, buf, 0)</code> 返回 0，不是错误。任何「批量处理」接口都应接受空输入。</p>
+<p><strong>③ 用不变式代替标志位。</strong> <code>begin &lt;= end</code> 这样的不变式一旦成立，就有一整类分支可以删掉；标志位则相反，它制造组合状态。</p>
+</div>
+
+<h2><span class="num">10.7</span>和三个痛点的关系</h2>
+
+<p>这一章对痛点一（变更放大）的回答最直接：<strong>每一个必须被处理的错误，都是未来每次相关变更的一个必改点。</strong> 加一种新的「可忽略」情况、改一次错误消息格式、换一次错误码枚举——如果你在每个调用点都写了 handler，这些变更就全都要乘上调用点数量。</p>
+
+<p>对痛点二（评审说不出所以然），这章给了一套可以直接引用的决策链（见 10.5 的 key）。你可以说「这个错误条件可以通过改定义消掉，为什么选择让每个调用方处理」，而不是「错误处理有点乱」。</p>
+
+<p>对痛点三（拆得不对），10.4 的聚合原则其实是一条<strong>结构判据</strong>：如果你的错误处理散落在十个模块里，那说明错误边界切错了——错误应该在能覆盖最多情况的那一层被处理。这跟 L9 的「该合该分」是同一把尺子。</p>
+
+<hr>
+
+<h2><span class="num">练习</span>改哪个定义</h2>
+
+<div class="quiz">
+  <p class="q"><span class="tag">单选</span>下面四个 API，哪一个最该用「改定义」而不是「加错误处理」来解决？</p>
+  <button data-why="这是真错误，屏蔽或改定义都会让调用方失去必要信息（比如「消息可能丢了」），必须暴露且要暴露得清楚。">A. 发送失败时返回 <code>SendError::PeerGone</code></button>
+  <button data-why="可以用聚合而不是改定义：让它传播到请求循环顶层，用一个 handler 统一转成错误响应。">B. 解析请求时缺参数 → <code>MissingParam</code></button>
+  <button data-ok="1" data-why="对。把定义从「从 start 删到 end」改成「保证 [start,end) 这个区间里没有字符」，越界与逆序都成为正常输入——正是 substring 那个例子的形状。">C. <code>erase(start, end)</code> 在 <code>end &gt; size</code> 时报错</button>
+  <button data-why="内存耗尽适合「让它崩」（ckalloc 模式），不是改定义——没有一种语义能让分配失败变成正常情况。">D. <code>alloc(n)</code> 失败时返回 <code>nullptr</code></button>
+  <p class="feedback"></p>
+</div>
+
+<h2><span class="num">练习</span>这四种招式，用哪一招</h2>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p><code>close(fd)</code> 在 fd 已被关闭时返回 <code>EBADF</code>，调用方到处判这个错。</p>
+    <div class="opts">
+      <button data-ok="1">改定义</button>
+      <button>屏蔽</button>
+      <button>聚合</button>
+      <button>让它崩</button>
+    </div>
+    <p class="note">把定义改成「确保这个 fd 不再有效」，已关闭就是幂等成功——和 Tcl 的 <code>unset</code> 完全同构。注意 Rust 的所有权在类型层面已经做到了这一点。</p>
+  </div>
+
+  <div class="row">
+    <p>TCP 层丢了一个包，应用层完全不需要知道。</p>
+    <div class="opts">
+      <button>改定义</button>
+      <button data-ok="1">屏蔽</button>
+      <button>聚合</button>
+      <button>让它崩</button>
+    </div>
+    <p class="note">低层就地重传，上层看到的是可靠字节流。判据：模块外部不需要这个信息就能做对决定。</p>
+  </div>
+
+  <div class="row">
+    <p>三十个 URL handler，每个都 try/catch 缺参数异常并生成几乎相同的 400 响应。</p>
+    <div class="opts">
+      <button>改定义</button>
+      <button>屏蔽</button>
+      <button data-ok="1">聚合</button>
+      <button>让它崩</button>
+    </div>
+    <p class="note">让异常传到 dispatcher，一个 handler 覆盖全部；消息在抛出时生成。这是 Web 框架的标准形状。</p>
+  </div>
+
+  <div class="row">
+    <p><code>malloc</code> 返回 <code>NULL</code>，而项目里有 800 个调用点，没人系统性检查。</p>
+    <div class="opts">
+      <button>改定义</button>
+      <button>屏蔽</button>
+      <button>聚合</button>
+      <button data-ok="1">让它崩</button>
+    </div>
+    <p class="note">内存耗尽时应用无事可做，逐点检查的收益远小于成本；<code>ckalloc</code> 打印诊断后中止，比空指针解引用崩溃更容易定位。注意：复制存储系统这类必须恢复的场景不适用。</p>
+  </div>
+</div>
+
+<h2><span class="num">练习</span>消灭一个特殊情况</h2>
+
+<div class="recall">
+<p>你的编解码器有个 <code>struct Frame { std::vector&lt;std::byte&gt; payload; bool has_trailer; }</code>，<code>has_trailer</code> 为 false 时，解码、校验、统计三处都要写特判。用本章的办法把它消掉，并说明你改了什么定义。</p>
+<p class="hint-inline">提示：能不能让「没有 trailer」成为「长度为 0 的 trailer」？</p>
+<textarea placeholder="定义怎么改？三处特判分别变成什么？有没有不变式可以立？"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p>改定义：<strong>每个帧都有 trailer，只是它可能是空的。</strong></p>
+<pre><code>struct Frame {
+    std::vector&lt;std::byte&gt; payload;
+    std::vector&lt;std::byte&gt; trailer;   // 不变式：可以为空，绝不为「不存在」
+};</code></pre>
+<p>三处特判的去向：</p>
+<table>
+  <thead><tr><th>位置</th><th>原来</th><th>现在</th></tr></thead>
+  <tbody>
+    <tr><td>解码</td><td><code>if (has_trailer) parse_trailer();</code></td><td><code>parse_trailer(buf, frame.trailer);</code> — 空输入自然产出空 trailer</td></tr>
+    <tr><td>校验</td><td><code>if (has_trailer &amp;&amp; !crc_ok()) fail();</code></td><td><code>crc_ok(frame.trailer)</code> — 空 spans 的 CRC 是常量，无需特判</td></tr>
+    <tr><td>统计</td><td><code>if (has_trailer) trailer_bytes += n;</code></td><td><code>trailer_bytes += frame.trailer.size();</code> — 加 0 是合法的</td></tr>
+  </tbody>
+</table>
+<p>收益有三层：<strong>①</strong> 三处分支消失；<strong>②</strong> 一类非法状态消失（原来 <code>has_trailer=false</code> 但 payload 里其实带了 trailer 字节，是可能的错配）；<strong>③</strong> 序列化/反序列化只有一条路径，测试用例减半。</p>
+<p>诚实的边界：如果 trailer 的解析开销很大（比如需要额外一次内存分配），那么「永远有一个 vector」在小帧上是有成本的。这时可以把它换成 <code>std::span</code> 指向原缓冲区，或者用 <code>SmallVec</code> 内联——<strong>但不要退回布尔标志</strong>。开销问题用存储方式解决，不要用「存在性」解决。</p>
+<p>另一个边界：如果「有没有 trailer」对<em>用户</em>是一个有意义的信息（比如要区分两种帧格式），那么它应该体现在<strong>帧的类型/协议版本</strong>上，而不是一个可以自由漂移的布尔。判断标准还是那句：谁需要这个信息，在什么时候需要。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>带走什么</h2>
+
+<p>这一章的招式可以压成一张决策链，下次看见 <code>if (err)</code> 就顺着走：</p>
+
+<ol>
+  <li><strong>能不能改定义？</strong> 把「删除」改成「确保不存在」，把「取子串」改成「取交集」，把「必须 trailer」改成「可以是空的」。</li>
+  <li><strong>能不能在低层屏蔽？</strong> 但只在模块外部不需要这个信息时。</li>
+  <li><strong>能不能聚合？</strong> 让异常传到能覆盖最多情况的那一层，消息随异常带上。</li>
+  <li><strong>值不值得处理？</strong> 罕见且无法应对的，打印诊断、中止进程。</li>
+</ol>
+
+<p>书里最后一句总结得很朴素：减少 bug 最好的办法，是简化软件。</p>
+
+<div class="key">
+<p><strong>贴进 code review 的话：</strong>「这个 `NotFound` / 越界判断是把它当错误上报了，但它是这个 API 的正常输入——每个调用点都得为它写一遍相同的分支。能不能改一下定义（返回交集 / 空结果 / `optional`），让这种情况不再需要被处理？真错误（IO、损坏）留在 `Result` 里，别和「正常缺失」混一条通道。」</p>
+</div>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch10.html">第 10 章 通过定义规避错误（中文全译）</a> — 注意读它对「过度屏蔽」的自我限定（网络模块那段），那是这一章最容易被误用的地方。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">把你项目里 <code>if (err)</code> 出现最多的那个函数贴给我。我们按四步走：这个错误条件能不能改定义消掉、能不能屏蔽、该不该聚合、还是干脆让它崩。</p>
+
+  <div class="nav-links">
+    <span><a href="0009-better-together-or-apart.html">← L9 · 在一起还是分开</a></span>
+    <span><a href="0011-design-it-twice.html">L11 · 设计两次 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

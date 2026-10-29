@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L14 · 选择的名字 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 14 章 · 课程 14 / 21</p>
+
+<h1>选择的名字</h1>
+<p class="standfirst">命名被严重低估，因为它看起来是纯机械的活——想个词，打上去，编译通过。但名字是你唯一能在「使用者还没打开实现」的时候传递信息的通道。这一章从作者花了六个月才找到的一个 bug 开始，把那六个月拆成可复用的判断。</p>
+
+<h2><span class="num">14.1</span>六个月，一个词</h2>
+
+<div class="excerpt">
+<span class="src">第 14 章 · Sprite 文件系统的 bug</span>
+<p>在 1980 年代末和 1990 年代初，我的研究生和我创建了一个名为 Sprite 的分布式操作系统。某个时候，我们注意到文件偶尔会丢失数据：即使用户没有修改文件，其中一个数据块也会突然变成全零。</p>
+<p>这个问题实际上很简单（像大多数 bug 一样，一旦找出来）。文件系统代码把变量名 <code>block</code> 用于两个不同的目的：在某些情况下指磁盘上的<strong>物理块号</strong>，在另一些情况下指文件内的<strong>逻辑块号</strong>。在代码的某一处，一个装着逻辑块号的 <code>block</code> 变量，被用在了需要物理块号的地方。结果，磁盘上一个无关的块被重置为零。</p>
+<p>追踪这个 bug 时，包括我自己在内的好几个人都读过那段出错的代码，但从没注意到问题。当我们看到 <code>block</code> 被当作物理块号使用时，我们本能地假设它确实装着物理块号。直到很长时间之后，损坏点被定位到具体语句，我才越过了这个名字造成的思维障碍，去检查它的值究竟来自哪里。如果对不同种类的块使用不同的名字（例如 <code>fileBlock</code> 和 <code>diskBlock</code>），这个 bug 就不太可能发生：程序员会知道在那种情况下不能用 <code>fileBlock</code>。</p>
+</div>
+
+<p>这段值得停在最后一句上。「会知道不能用」——这是名字最被低估的作用：<strong>它不只能帮人理解，还能阻挡人犯错。</strong>一个精确的名字在写代码的瞬间就会让人产生疑问（「等等，我手上这个是文件块号，这儿要的是磁盘块号」），而在读代码的时候，人根本不会产生这种疑问，因为 <code>block</code> 读起来哪儿都对。</p>
+
+<div class="key">
+<p><strong>名字的两个性质，按重要性排：<a class="gl" href="../reference/glossary.html#precision">精度</a><span class="en-inl">precision</span> &gt; <a class="gl" href="../reference/glossary.html#consistency">一致性</a><span class="en-inl">consistency</span>。</strong>精度解决「这一个名字说的是什么」；一致性解决「同一个东西在二十个文件的什么地方，是不是同一个名字」。前者防的是 Sprite 那种事故，后者防的是痛点①（改一个需求要动好几处）。</p>
+</div>
+
+<p>还有一个反直觉的结论：<code>block</code> 这名字<strong>不算差</strong>。它跟「磁盘块」和「文件块」都相当接近，属于「合理接近」的范畴，而这正是它危险的原因——你不会因为它刺眼而去审它，你只会一路顺着它读下去。</p>
+
+<h2><span class="num">14.2</span>精度：太泛的名字是最常见的病</h2>
+
+<p>命名最常见的失败不是起错了，是起得太泛。书里给了五个真实样本，全都是「不离谱但不精确」，我们逐个看它在 C/C++/Rust 里长什么样。</p>
+
+<h3>① <code>getCount</code>：泛到读者必须翻文档</h3>
+
+<pre><code>// 返回本对象管理的 indexlet 总数。
+int IndexletManager::getCount() { ... }</code></pre>
+
+<p>这注释写得不错——问题就在这：<strong>注释得补上名字欠的债。</strong>一个看到 <code>mgr.getCount()</code> 的读者，如果不去翻声明，无法知道数的是什么。<code>getActiveIndexlets()</code> 或 <code>numIndexlets()</code> 让读者当场就猜对。</p>
+
+<p>性能敏感代码里这个病特别多，因为总有那么几个数字很顺口：<code>size</code>、<code>count</code>、<code>len</code>、<code>cap</code>、<code>n</code>、<code>num</code>。判断法：<strong>把名字单独抄出来，问「不看声明，我能猜到它指什么吗」</strong>。</p>
+
+<h3>② <code>x</code> / <code>y</code>：太泛，而且撞了别的抽象</h3>
+
+<pre><code>// 编辑器里记录字符在文件中的位置
+size_t x, y;</code></pre>
+
+<p>看到 <code>x</code> 你会想到屏幕坐标，或者矩阵下标，或者数学。三个都不对这边——它其实是一行文本里的字符位置和文件里的行号。改成 <code>charIndex</code> 和 <code>lineIndex</code> 之后，代码自己就说话了。</p>
+
+<h3>③ 布尔名必须是<a class="gl" href="../reference/glossary.html#predicate">谓词式命名</a><span class="en-inl">predicate</span></h3>
+
+<pre><code>// 闪烁状态：光标可见时为 true。
+bool blink_status = true;</code></pre>
+
+<p><code>status</code> 对布尔值来说太模糊：真值什么意思？假值什么意思？<code>blink</code> 也模糊——闪烁是一种行为，不是一个状态。<strong>布尔名字要能读成一个句子</strong>：</p>
+
+<pre><code>// 控制光标闪烁：true 表示光标可见，false 表示不绘制光标。
+bool cursor_visible = true;</code></pre>
+
+<p><code>cursor_visible</code> 让人一眼推出 true 的含义。注意它丢掉了「因为闪烁」这层信息——读者如果好奇光标为什么不是一直可见，得查文档。但那属于次要信息，删掉是划算的。</p>
+
+<h3>④ 名字说「它特殊」，没说「特殊在哪」</h3>
+
+<pre><code>// 表示本服务器在当前任期内还没给任何人投票的值。
+static const std::string VOTED_FOR_SENTINEL_VALUE = "null";</code></pre>
+
+<p>「哨兵值」只说明这是个特殊值，没说特殊含义。<code>NOT_YET_VOTED</code> 直接说完。</p>
+
+<h3>⑤ <code>result</code>：在没返回值的地方尤其坏</h3>
+
+<p>书里的例子是一个没有返回值的函数里用了 <code>result</code>。两个毛病：一是暗示它会被返回（它不会），二是除了「这是个算出来的值」之外什么都没说。应该是 <code>mergedLine</code>、<code>totalChars</code> 这种。如果函数真的有返回值，<code>result</code> 勉强可以接受——读者知道去看文档确认。</p>
+
+<div class="key">
+<p><strong>一条通用规则：</strong>名字如果宽到能指很多不同东西，它传达的信息就接近零，而它指代的那个实体大概率会被误用。泛名不是「无害的简写」，是给后来的自己留的一个陷阱。</p>
+</div>
+
+<h2><span class="num">14.3</span>但太具体也是错</h2>
+
+<p>书里给了一个很妙的例子，正好是 C++ 风格：</p>
+
+<pre><code>void delete(Range selection);</code></pre>
+
+<p>名字太具体了——它在暗示「这里永远是用户在界面上选中的一段文本」。但这个方法可以在任意范围上调用，不管有没有选中。参数名应该叫 <code>range</code>。</p>
+
+<p>这类错误在底层代码里同样常见，只是方向相反：把「当前唯一调用方的场景」焊进了名字。</p>
+
+<pre><code>// 把 buf 里的数据按 page_size 切块写进 mmap 区域。
+void flush_from_writeback_thread(char* buf, size_t n, uint64_t page_size);
+
+// 好一点
+void write_pages(char* buf, size_t n, size_t page_size);</code></pre>
+
+<p>第一版的名字泄漏了「谁在什么时候调用它」——那是调用方的决定，不是这个函数的本质。如果哪天要在 sync 路径里也用它，你得给一个一模一样的函数起第二个名字，或者忍着用一个假名字。</p>
+
+<p><strong>判断法：把名字里的每个词换成一个你会在别处用的场景，如果换了就说不通，这个词太具体。</strong></p>
+
+<h2><span class="num">14.4</span>一致性：三条要求，一条比一条难</h2>
+
+<p>书里给了三条，第三条绝大多数代码库都违反：</p>
+
+<table>
+  <thead><tr><th>要求</th><th>违反的例子</th><th>后果</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>① 同一个用途，始终用同一个名字</td>
+      <td>同一个东西这里叫 <code>len</code>，那里叫 <code>n</code>，第三处叫 <code>size</code></td>
+      <td>读者要确认「这三个是不是同一个东西」——每次都确认，成本线性叠加</td>
+    </tr>
+    <tr>
+      <td>② 同一个名字，只用于那一个用途</td>
+      <td><code>block</code> 既是文件块号又是磁盘块号</td>
+      <td>Sprite 的六个月</td>
+    </tr>
+    <tr>
+      <td>③ 用途本身要足够窄，让所有用这个名字的变量行为一致</td>
+      <td><code>block</code> 这个用途本身就宽到能装两种行为</td>
+      <td>这是前两条失效的根因——只改写法救不了</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>第三条是重点：Sprite 那个 bug 不是「某人违反了第②条」，而是「<code>block</code> 这个词的语义范围天然包含两种东西」。所以修法不是「以后注意点」，是<strong>把名称的语义切窄</strong>——分成 <code>fileBlock</code> 和 <code>diskBlock</code>。</p>
+
+<p>一致性还带来一种很值钱的东西：<strong>读者可以复用已经建立的假设。</strong>书里的比喻是复用普通类——你一旦搞懂 <code>fileBlock</code> 是什么，在任何一个新文件里看到它，这个知识直接可用，不需要重新验证。这是纯粹的认知节省。</p>
+
+<p>配套的两个细则：</p>
+
+<ul>
+  <li><strong>同一类东西要多个时，加前缀区分。</strong>复制文件数据的方法需要两个块号：<code>srcFileBlock</code> / <code>dstFileBlock</code>，不是 <code>block1</code> / <code>block2</code>。前者自带方向，后者要读者记住顺序。</li>
+  <li><strong>循环变量也有一致性。</strong>用 <code>i</code>/<code>j</code> 就永远在最外层用 <code>i</code>、嵌套用 <code>j</code>。这样读者看到 <code>j</code> 就知道「在某个内层」，不用回溯。</li>
+</ul>
+
+<h2><span class="num">14.5</span>名字该多长：一场真实的争论</h2>
+
+<p>书里罕见地引了一场争论，而且作者没有完全站在自己那边。Go 社区的一部分人主张名字应该极短，常常一个字符。Andrew Gerrand 在一次演讲里说「长名字模糊了代码在做什么」，并给出两版对比：</p>
+
+<pre><code>// 短名版
+func RuneCount(b []byte) int {
+    i, n := 0, 0
+    for i &lt; len(b) {
+        ...
+        n++
+    }
+    return n
+}
+
+// 长名版
+func RuneCount(buffer []byte) int {
+    index, count := 0, 0
+    for index &lt; len(buffer) {
+        ...
+        count++
+    }
+    return count
+}</code></pre>
+
+<div class="excerpt">
+<span class="src">第 14 章 · 可读性由读者决定</span>
+<p>就个人而言，我不觉得第二版比第一版更难读。如果说有区别，与 <code>n</code> 相比，<code>count</code> 这个名字为变量的行为提供了更好的线索。在第一版里，我最终得通读代码，试图弄明白 <code>n</code> 到底是什么意思；而第二版里我没有这个需要。不过，如果 <code>n</code> 在整个系统中始终用于表示计数（而不用于别的东西），那么其他开发者可能确实一眼就懂这个短名字。</p>
+<p>总的来说，我认为<strong>可读性必须由读者而不是作者来决定</strong>。如果你用短变量名写了代码，而读这段代码的人觉得容易理解，那很好。如果你开始听到抱怨说代码含糊，那你就该考虑用更长的名字。同样，如果我开始抱怨长变量名让我的代码难读，我就会考虑用更短的。</p>
+<p>Gerrand 提出了一个我赞同的观点：「<strong><a class="gl" href="../reference/glossary.html#distance-between-declaration-and-use">声明与使用的距离</a><span class="en-inl">distance between declaration and use</span>越大，名字就应该越长。</strong>」前面关于 <code>i</code> 和 <code>j</code> 的讨论就是这个规则的例子。</p>
+</div>
+
+<p>「距离」这条规则是本章最可操作的一条，而且它完美解释了为什么底层代码里的短名有时真的对：</p>
+
+<table>
+  <thead><tr><th>场景</th><th>声明到使用的距离</th><th>合适的名字</th></tr></thead>
+  <tbody>
+    <tr><td><code>for (size_t i = 0; i &lt; n; i++)</code>，循环体 3 行</td><td>极近，整个用法一眼可见</td><td><code>i</code> 完全够</td></tr>
+    <tr><td>一个 60 行的 DMA 描述符填充循环，<code>i</code> 在三个嵌套块里被用</td><td>远，读者要滚动</td><td><code>descIndex</code></td></tr>
+    <tr><td>函数参数，函数体 200 行</td><td>最远（用到的地方离声明一整屏）</td><td>必须精确</td></tr>
+    <tr><td>结构体字段，跨文件用</td><td>无限远（读者看不到声明）</td><td>必须精确且一致</td></tr>
+  </tbody>
+</table>
+
+<p>还有一条作者顺带提的：Go 文化鼓励<strong>同一个短名表示多种东西</strong>——<code>ch</code> 既可以是字符也可以是 channel，<code>d</code> 可以是 data / diff / distance。作者对此的评价是「这种模棱两可的名字很可能导致混乱和错误」。用 14.4 的框架看，这就是第②③条同时被违反：名字的用途范围宽到能装三种行为。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div>
+<b>这样写</b>
+<pre><code>struct PageCache {
+    std::vector&lt;uint8_t&gt; data;   // 缓存数据
+    size_t size;                 // 大小
+    size_t cap;                  // 容量
+    bool dirty;                  // 脏
+    int fd;                      // 文件描述符
+    off_t off;                   // 偏移
+};
+
+// 从缓存里读
+ssize_t read_from_cache(PageCache&amp; c, void* buf, size_t n);
+
+// 把缓存刷到磁盘
+int flush(PageCache&amp; c);
+
+// 标记为脏
+void mark_dirty(PageCache&amp; c, bool flag);</code></pre>
+</div>
+<div>
+<b>为什么烂</b>
+<p>这不是虚构的——这是每个存储项目都写过的第一版。逐条看：</p>
+<p>① <code>size</code> 和 <code>cap</code>：<strong>哪一个决定 <code>read_from_cache</code> 能返回多少字节？</strong>注释说「大小」「容量」，等于把问题原样退回给读者。这正是 14.2 的 <code>getCount</code> 病。而且 <code>cap</code> 撞了 <code>std::vector::capacity</code> 的语义但不一定等于它（如果这个 cache 自己是按页管理的）。</p>
+<p>② <code>dirty</code>：和 <code>mark_dirty(c, flag)</code> 拼起来，读者要读三遍才能确定 <code>flag=false</code> 是不是「标为干净」。名字没有传递极性。</p>
+<p>③ <code>off</code>：相对于什么？文件开头？页对齐后？如果它表示「缓存窗口在文件中的起始位置」，那它就是 <code>file_offset</code>，而 <code>off</code> 什么也没说。</p>
+<p>④ <code>read_from_cache</code> 的 <code>n</code>：这是最多要读的字节数，还是缓存里现有的字节数？如果返回值和 <code>n</code> 不等，是短读还是错误？<strong>任何一个调用方猜错，就是读到未初始化内存或静默截断数据。</strong></p>
+<p>⑤ 最狠的一条：<code>data</code> + <code>size</code> + <code>cap</code> + <code>off</code> 是<strong>四个变量共同描述一个抽象</strong>（「一个页对齐的、映射到文件某段的窗口」）。名字含糊的深层原因是这个抽象没有被写出来——所以维护者只能靠记忆维持<a class="gl" href="../reference/glossary.html#invariant">不变量</a><span class="en-inl">invariant</span>（<code>data.size() == cap</code>？<code>cap</code> 是页的整数倍？<code>off</code> 必须页对齐？）。</p>
+</div>
+</div>
+<p>改法：不是把注释写长，而是让名字承担它该承担的，然后<strong>把「四个变量必须同时成立的那些条件」写成注释</strong>（第 13 章的精度五问）。</p>
+<pre><code>/**
+ * 把一个文件区域映射进内存的缓存窗口。
+ *
+ * 不变量（所有方法返回后都成立）：
+ *   - window_offset 是 page_size() 的整数倍
+ *   - bytes_valid &lt;= bytes_allocated
+ *   - bytes_allocated 是 page_size() 的整数倍
+ * 违反其中任何一条的结果是下一次 flush() 写出错误数据。
+ */
+struct PageCache {
+    // 缓存窗口在文件中的起始偏移，页对齐。
+    off_t window_offset;
+    // 已从文件读入、可直接返回的字节数（从 window_offset 起算）。
+    size_t bytes_valid;
+    // 已分配并可读写的字节数（&gt;= bytes_valid），页对齐。
+    size_t bytes_allocated;
+    // window_offset..window_offset+bytes_valid 中有未被写回磁盘的修改。
+    bool has_unwritten_changes;
+    // 底层文件描述符；本结构不拥有所有权，不负责 close。
+    int file_fd;
+};
+
+/**
+ * 从窗口内复制最多 max_bytes 字节到 dst。
+ * 返回实际复制的字节数（可能小于 max_bytes，因为到达 bytes_valid 末尾），
+ * 或 -1 表示调用参数非法（dst 为空 / max_bytes 为 0）。
+ * 不触发磁盘 I/O，超出有效范围的部分不会被填充。
+ */
+ssize_t copy_valid_bytes(PageCache&amp; c, void* dst, size_t max_bytes);
+
+/**
+ * 把 has_unwritten_changes 为 true 的区间写回磁盘并清零该标记。
+ * 返回 0 成功，或 -errno。失败时 has_unwritten_changes 保持为 true。
+ */
+int write_back(PageCache&amp; c);
+
+/**
+ * 设置 has_unwritten_changes。
+ * 调用方只能在 window_offset + bytes_valid 区间内写入数据之后调用本函数。
+ */
+void mark_written(PageCache&amp; c);</code></pre>
+<p>最后一个函数更彻底：<strong>改法不是给它加个 <code>flag</code> 参数，而是删掉那个参数。</strong>「标记为脏」不需要一个布尔——把标记设成 <code>false</code> 是 <code>write_back</code> 的职责，让调用方也能做，就多了一条能破坏不变量的路。这属于第 6 章（把错误定义成不存在），但它是由命名练习暴露出来的：你在给 <code>mark_dirty(c, flag)</code> 想一个不别扭的名字时，才会发现这个参数本来就不该存在。</p>
+</div>
+
+<h2><span class="num">14.6</span>取不出好名字，是设计的报警器</h2>
+
+<p>这是全章最有用的推论，也直接回应痛点③（<a class="gl" href="../reference/glossary.html#module">模块</a><span class="en-inl">module</span>越拆越乱）：</p>
+
+<div class="excerpt">
+<span class="src">第 14 章 · 危险信号</span>
+<p>如果你发现很难为某个变量想出一个精确、直观、又不太长的名字，那这是一个<strong>危险信号</strong>。它表明这个变量可能没有清晰的定义或目的。遇到这种情况，考虑替代方案：也许你正试图用一个变量表示多件事；如果是这样，把表示拆成多个变量可能会让每个变量的定义都更简单。</p>
+<p>如果一个变量或方法找不到简单的名字、无法在读者脑中建立起关于底层对象的清晰图像，就暗示底层对象的设计可能不够简洁。</p>
+</div>
+
+<p>把这条读成一句操作指令：<strong>「卡在起名」不是编码阶段的杂事，它是设计评审最早能拿到的一次信号。</strong>而且它比「我觉得这段设计不太好」强得多，因为它指向一个具体动作：拆。</p>
+
+<p>书里有一段很典型的拆分包例子（原文是 Java，这里换成 Rust 的形态）：</p>
+
+<pre><code>// 起不出名字的版本
+struct LinkLayer {
+    // ... 队列、重传、超时、序列号、统计 ...
+}
+fn process(&amp;mut self, bytes: &amp;[u8], peer: PeerId);
+
+// 拆开之后，每个名字都自己说得清
+struct RetransmitQueue { ... }      // 只负责「哪些帧未确认、何时重传」
+struct TxStats { ... }              // 只负责计数
+struct LinkLayer {
+    txq: RetransmitQueue,
+    stats: TxStats,
+}
+fn send(&amp;mut self, payload: &amp;[u8], peer: PeerId) -&gt; Result&lt;(), SendError&gt;;</code></pre>
+
+<p>第一版里 <code>process</code> 这个名字起不好——你没法叫它 <code>send</code>（它还处理重传和统计），也没法叫 <code>tick</code>（它还发新帧）。<strong>名字起不出来的地方，往往是一个函数在扮演三个角色。</strong>拆开之后每个名字突然都很顺，这就是信号被兑现的样子。</p>
+
+<div class="key">
+<p><strong>把它变成评审话术：</strong>不要说「这个结构设计得不好」（痛点②），说「<code>process</code> 这个名字我起不出来——它同时在做发帧、重传和计数。是这三件事应该分开，还是这个名字其实暗示了一个我们还没定的抽象？」这句话给了对方两个具体的出路，而不是一句评价。</p>
+</div>
+
+<p>作者最后把它归到第 3 章的投资思维：多花一点时间选好名字，将来处理这段代码会更容易，引入错误的概率更低。而<strong>命名技巧本身也是投资</strong>——第一次决定不再满足于平庸名字时，会很痛苦很慢；有经验之后几乎不额外花时间，好处就接近免费了。这句话值得给刚入行的同事看，因为它解释了为什么「起名慢」不是能力问题，是阶段问题。</p>
+
+<hr>
+
+<h2><span class="num">练习</span>这个名字该不该改</h2>
+
+<p>五个片段。判断每个名字的问题是「太泛」「太具体」「一致性」还是「没问题」。</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p><code>for (size_t i = 0; i &lt; hdrs.size(); ++i) { sum += hdrs[i].len; }</code> —— 单行循环，整个用法一眼可见。</p>
+    <div class="opts">
+      <button>太泛，改 index</button>
+      <button data-ok="1">没问题</button>
+      <button>一致性，改 j</button>
+    </div>
+    <p class="note">用 14.5 的「距离」规则：声明与使用距离极近、全部用法一眼可见，短名不承担任何风险。改成 <code>headerIndex</code> 只是让这行变长，可读性没变好。</p>
+  </div>
+
+  <div class="row">
+    <p><code>size_t n = get_pending();</code> —— 同一个文件里，另有两处同样的语义分别叫 <code>len</code> 和 <code>count</code>。</p>
+    <div class="opts">
+      <button>太具体</button>
+      <button data-ok="1">一致性</button>
+      <button>没问题</button>
+    </div>
+    <p class="note">这不是精度问题——<code>n</code>、<code>len</code>、<code>count</code> 单独看都能读。问题是读者要反复确认「这三个是不是同一个东西」。按 14.4 第①条，选一个名字并在所有地方用它。</p>
+  </div>
+
+  <div class="row">
+    <p><code>void flush_to_disk_after_commit(char* buf, size_t n);</code></p>
+    <div class="opts">
+      <button data-ok="1">太具体</button>
+      <button>太泛</button>
+      <button>没问题</button>
+    </div>
+    <p class="note">名字焊死了「提交之后」这个调用时机——那是调用方的决定。如果事务回滚路径也要刷，你就得再写一个函数，或者用一个撒谎的名字。这类错误在「先服务唯一调用方」的代码里最常见。</p>
+  </div>
+
+  <div class="row">
+    <p><code>bool is_valid = check(ptr);</code> —— 但在同一段里，<code>is_valid</code> 后来又被赋值成「是否已写入 CRC」。</p>
+    <div class="opts">
+      <button>太泛</button>
+      <button data-ok="1">一致性（第②③条）</button>
+      <button>太具体</button>
+    </div>
+    <p class="note">一个名字承载了两种行为，是 Sprite bug 的完全同构版本。注意第③条：<code>is_valid</code> 这个用途本身就宽到能装两种含义，所以修法是拆成两个变量（<code>layout_ok</code> / <code>crc_written</code>），而不是每次赋值前多想一秒。</p>
+  </div>
+
+  <div class="row">
+    <p><code>struct Buf { uint8_t* p; size_t len; }</code> —— 全项目 200 处使用，每处都是「一段字节 + 长度」。</p>
+    <div class="opts">
+      <button>太泛，改 byte_span</button>
+      <button>太具体</button>
+      <button data-ok="1">没问题</button>
+    </div>
+    <p class="note">这是短名唯一站得住的情形：用途极窄、行为完全一致（14.4 第③条满足）、而且全项目一致使用。此时 <code>Buf</code> 的语义已经收敛得比 <code>std::vector&lt;uint8_t&gt;</code> 还准。注意前提是「全项目一致」——一旦有人在别处用 <code>Buf</code> 表示「带容量的缓冲区」，这条就塌了。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>起不出来的那个名字</h2>
+
+<div class="recall">
+<p>下面这个函数你想不出合适的名字。别硬起——先回答：它是几个东西？</p>
+<pre><code>// ????
+int handle(Conn* c, const uint8_t* pkt, size_t len, bool ack, int* out_room);</code></pre>
+<p class="hint-inline">提示：四个参数各是什么角色？两个输出（返回值 + out_room）说明了什么？<code>ack</code> 这个布尔在控制什么？</p>
+<textarea placeholder="它有 N 个职责：…  我打算这样拆：…"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p><strong>先数参数的角色：</strong></p>
+<ol>
+  <li><code>c</code> —— 连接状态，读写它（要改序列号、窗口）。</li>
+  <li><code>pkt</code> + <code>len</code> —— 一个入站帧，只读。</li>
+  <li><code>ack</code> —— 一个<strong>行为开关</strong>：true 时大概要生成并发送 ACK。这是最刺眼的信号——一个布尔参数改变了函数的主要行为。</li>
+  <li><code>out_room</code> —— 一个输出参数，说明它还顺手报告了别的状态（剩余窗口？）。</li>
+</ol>
+<p><strong>结论：它在做至少三件事</strong>——① 解析/校验入站帧；② 更新连接状态（序列号、去重）；③ 决定要不要发 ACK，并且顺便把某个状态通过指针吐出。</p>
+<p>这就是 14.6 的信号：名字起不出来，因为<strong>一个名字不可能同时说清三件事</strong>。任何候选名都会漏掉两件：叫 <code>receive_frame</code> 漏了 ACK 和 out_room，叫 <code>process_ack</code> 漏了解析和投递。</p>
+<p><strong>一个拆法：</strong></p>
+<pre><code>// 只做一件事：把入站字节解析成一个帧，不碰连接状态。
+struct Frame { uint32_t seq; std::span&lt;const uint8_t&gt; payload; };
+std::optional&lt;Frame&gt; parse_frame(const uint8_t* pkt, size_t len);
+
+// 只做一件事：把帧交给接收窗口。
+// 返回 Rejected 表示重复帧（此时调用方仍需发 ACK）。
+enum class Delivery { Accepted, Rejected };
+Delivery deliver(RecvWindow&amp; w, const Frame&amp; f);
+
+// 只做一件事：根据当前窗口状态生成要发回的 ACK。
+// 返回 std::nullopt 表示此刻不该发 ACK（例如需要合并）。
+std::optional&lt;Ack&gt; maybe_ack(const RecvWindow&amp; w);</code></pre>
+<p>拆完之后三个名字都是<strong>一读就对</strong>的——这本身就是拆对了的证据。<code>ack</code> 那个布尔消失了（变成 <code>maybe_ack</code> 里的判断），<code>out_room</code> 那个指针也没了（调用方直接读 <code>w</code>）。</p>
+<h3>为什么这个练习值得做</h3>
+<p>痛点③说「模块拆得不对，越拆越乱」。乱通常不是拆多了，是<strong>在错误的地方拆</strong>。这条练习给了一个客观的分界：拆到每个名字都能一读就对为止。反过来也成立——如果你拆了半天，名字还是起不出来，说明你按「代码行数」而不是按「职责」在切。</p>
+<p>还有一点：<code>handle</code> 这个名字本身就是证据。<code>handle</code>、<code>process</code>、<code>do_work</code>、<code>manage</code>、<code>update</code> 是英语里最没有信息量的动词，它们的存在几乎总是在提示「这里有一个没被命名的抽象」。下次在评审里看到这类函数名，先别要求改名——先问它做几件事。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>一句话评审</h2>
+
+<div class="key">
+<p><strong>把这段原样贴进评论就行：</strong>「<code>block</code> 这个变量在这段代码里同时装着文件内逻辑块号和磁盘物理块号（第 12 行、第 31 行、第 47 行）。这种混用在读代码时不会产生任何疑问，所以坏了也查不出来——我建议现在就改成 <code>file_block</code> / <code>disk_block</code>，别等它变成线上问题。顺带：<code>size</code> 和 <code>cap</code> 我想确认哪个是「已写入字节数」，如果两者含义不同，名字最好直接说明，因为调用方一旦猜错就是越界读。」</p>
+</div>
+
+<p>这句话的三段结构可以复用：<strong>指出名字承载了两种语义（附行号）→ 解释为什么这种错在评审里看不出来（所以现在必须改）→ 顺带点出一处会导致越界的模糊</strong>。第二段是关键——它把「名字不好看」升级成「这是一个不会自曝的缺陷」。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch14.html">第 14 章 选择的名字（中文全译）</a> — 原文里 Go 短名之争的那两段代码完整保留，包括作者引用的 Gerrand 演讲出处，值得对着看；本章也是全书唯一一章作者明确说「不是所有人都同意我」的地方。</p>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch13.html">第 13 章</a> — 命名与注释是同一件事的两面：名字负责「一眼可见的部分」，注释负责「名字装不下的部分」。14.2 里那几个坏名字，正好是第 13 章「不要用被注释实体自己的名字」的另一侧。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">贴一段你正在写、但名字起得不顺的代码（<code>struct</code>、函数签名、或者那个你叫 <code>data</code> 的字段）。我们按 14.6 走一遍：先数它做几件事，再看要不要拆。如果拆完名字自动出来了，那就是拆对了。</p>
+
+  <div class="nav-links">
+    <span><a href="0013-comments-describe-nonobvious.html">← L13 · 注释应该描述不明显的内容</a></span>
+    <span><a href="0015-write-comments-first.html">L15 · 先写注释 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

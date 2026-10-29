@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L8 · 降低复杂性 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 8 章 · 课程 8 / 21</p>
+
+<h1>降低复杂性</h1>
+<p class="standfirst">一个不可避免的复杂度摆在你面前：你可以自己扛，也可以推给调用方。这一章只讲一件事——该谁扛，以及为什么几乎总是你扛。</p>
+
+<h2><span class="num">8.1</span>把麻烦往下压</h2>
+
+<p>设想你在写一个新模块，碰到一个绕不过去的复杂度。它不会消失，只能落在某处。两个选项：</p>
+
+<ul>
+  <li><strong>往下压：</strong>模块自己在内部消化它，调用方完全不知道它的存在。</li>
+  <li><strong>往上推：</strong>模块把决定权交出去——抛异常、要参数、要回调、要调用方先做一步预处理。</li>
+</ul>
+
+<p>书里的答案有个很朴素的算术：</p>
+
+<div class="excerpt">
+<span class="src">第 8 章 · 谁该扛这个复杂度</span>
+<p>如果这个复杂度与该模块提供的功能有关，那么第二个答案通常是错的：大多数模块的使用者比开发者多，所以麻烦开发者，比麻烦使用者要好。</p>
+<p>作为模块的开发者，你应当努力让使用者的日子尽可能轻松，即使这意味着你自己要多干一点活。换一种说法：<strong>模块拥有简单的接口，比拥有简单的实现更重要。</strong></p>
+</div>
+
+<p>这个算术在底层代码里尤其成立，值得展开。一个 <code>read()</code> 的包装如果多要求调用方检查一个返回码，而它有一千个调用点，那么这个「省事」实际是<strong>把一个决定复制了一千份</strong>。而如果包装自己在内部处理掉，成本是一份。</p>
+
+<p>书里也点破了人为什么会反过来做：把简单的问题先解决、把难的问题推给别人，短期内自己的日子最舒服。抛个异常、加个配置项，今天就能收工。代价是隐形的、分散的，落在未来和别人的身上。</p>
+
+<h2><span class="num">8.2</span>配置参数：把决定权当礼物送出去</h2>
+
+<p>这是本章最锋利的一节，也是底层项目里最常见的「伪设计」。</p>
+
+<p>典型过程是这样的：你在写一个页缓存，不确定缓存多大合适。于是：</p>
+
+<pre><code>struct CacheConfig {
+    size_t capacity_pages;      // 缓存多少页？
+    size_t prefetch_ahead;      // 预读几页？
+    int    eviction;            // 0=LRU 1=CLOCK 2=ARC？
+    size_t flush_batch;         // 一次回写几页？
+};
+
+class PageCache {
+public:
+    explicit PageCache(const CacheConfig&amp; cfg);
+};</code></pre>
+
+<p>看起来非常专业：灵活、可调、适应不同负载。实际发生的事是：</p>
+
+<ol>
+  <li>你把「多大合适」这个<em>你本该想清楚的问题</em>，换成了「请告诉我要多大」。</li>
+  <li>每个部署、每个测试、每个下游库，都得自己填四个数字。填错了没人报错，只是慢或 OOM。</li>
+  <li>这些值会<strong>过时</strong>。你换了淘汰算法、换了设备，配置文件里那四个数字还在，而且没人敢改——因为不知道当初为什么这么填。</li>
+</ol>
+
+<div class="excerpt">
+<span class="src">第 8 章 · 配置参数</span>
+<p>配置参数还提供了一个轻松的借口，让人可以不去处理重要问题，而是把它转嫁给别人。在很多情况下，用户或管理员很难、甚至无法确定参数的正确值；而在另一些情况下，只要系统实现多做一点工作，就能自动算出正确的值。</p>
+<p>所以应当尽可能避免配置参数。在导出一个配置参数之前，先问自己：<strong>用户（或更高层的模块）能比我们在这里确定得更好吗？</strong> 理想情况下，每个模块都应当完整地解决问题；配置参数导致解决方案不完整，从而增加系统复杂性。</p>
+</div>
+
+<h3>「自动算」长什么样</h3>
+
+<p>书里的例子是网络重传间隔：与其导出一个 <code>retry_interval_ms</code> 让人去猜，不如让协议<strong>测量成功请求的响应时间</strong>，取其若干倍作为重试间隔。好处有两个：用户不用懂；条件变化时它会自动适应。</p>
+
+<p>页缓存同理。下面这个接口没有一个可调旋钮，但它在真实机器上通常比那四个数字更准：</p>
+
+<pre><code>class PageCache {
+public:
+    // capacity 不给：取 min(可用内存的 1/8, 设备容量)。
+    // 预读：按顺序访问的命中率自适应调整。
+    // 淘汰：LRU 起步，检测到扫描型负载时切到 CLOCK。
+    PageCache();
+};</code></pre>
+
+<p>注意这不是「不要可配置」。书里留了口子：当<strong>用户确实比实现更懂</strong>时才该导出参数（比如优先级——用户知道哪个请求更急），并且应该<strong>给一个合理的默认值</strong>，让参数只在特殊情况下才需要被填。</p>
+
+<div class="key">
+<p>判断一个参数该不该存在，问三句：<br>
+① 用户能比我们算得更好吗？<br>
+② 如果填错，系统会报错吗，还是只是悄悄变慢？<br>
+③ 我们能不能给一个「大多数情况都对」的默认值，让这个参数默认不用出现？</p>
+</div>
+
+<h2><span class="num">8.3</span>同一个原则的两个正例</h2>
+
+<p>「往下压」不只是「别抛异常、别加参数」，它有一个更积极的形态：<strong>把调用方本来要做的几步，变成模块内的一步。</strong></p>
+
+<div class="grid2">
+<div class="card">
+<h4>文本编辑器的经典对照</h4>
+<p>行导向接口：UI 要做「在行中间插一个字符」，得拆行、插入、合并、修后面所有行号。</p>
+<p>字符导向接口：<code>insert(pos, text)</code> 一次搞定。实现变复杂了（内部要拆并行），但<strong>这段复杂性被封装在模块内部，只写一次</strong>，而不是在 UI 的十几个地方各写一遍。</p>
+</div>
+<div class="card">
+<h4>原子写文件</h4>
+<p>「写临时文件 → fsync → rename → fsync 目录」这四步，如果交给每个调用方做，一定会有人漏掉第二个 fsync。</p>
+<p>把它压进 <code>atomic_write(path, bytes)</code>：调用方一句，正确性只由一处保证。文件的<em>实现</em>更难写了，接口却更好用了。</p>
+</div>
+</div>
+
+<p>这两个例子的形状完全一样：<strong>复杂度没减少，只是从 N 个调用点搬到了 1 个实现里。</strong> 这就是「降低复杂性」在这个语境下的准确含义——不是让问题消失，是让知道它的人数从 N 降到 1。</p>
+
+<h2><span class="num">8.4</span>但别压过头</h2>
+
+<p>书里专门有一节讲这个，因为「降复杂度」太容易变成万能借口。判断标准有两条，必须同时满足：</p>
+
+<ol>
+  <li>被压下去的复杂度，与这个类<strong>已有的功能密切相关</strong>；</li>
+  <li>压下去之后，系统<strong>其他地方</strong>会有一批简化。</li>
+</ol>
+
+<p>反例就在第 6 章：给文本类加一个 <code>backspace()</code> 方法。表面上看这是「降低复杂性」——UI 不用自己算删哪个字符了。但它违反了第一条：退格是 UI 语义，跟「管理文本」的核心功能无关。结果不是降低复杂度，而是<strong>信息泄漏</strong>：文本类从此知道 UI 的存在。</p>
+
+<p>书里对这个反例的判词很准：把 UI 知识加进文本类，并<em>没有</em>显著简化上层代码，反而把两个模块绑在了一起。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>// 「帮调用方把麻烦都处理掉」——处理过头了
+class Conn {
+public:
+    // 内部重试 3 次、超时 5s、失败返回空 buffer
+    std::vector&lt;std::byte&gt; request(const Request&amp; r);
+
+    // 内部解析协议、校验 checksum、反序列化
+    std::optional&lt;Response&gt; request_parsed(const Request&amp; r);
+
+    // 内部重试 + 解析 + 业务层缓存
+    std::optional&lt;Response&gt; request_cached(const Request&amp; r);
+private:
+    /* … */
+};</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>① 三个方法做的是同一件事的三层包装，调用方不知道该用哪个（认知负荷）；② 「重试几次」「超时多久」被硬编码进 <code>Conn</code>，需要不同策略的调用方无路可走，只能绕开这个类自己写 socket 代码；③ <code>request_cached</code> 把业务缓存塞进传输层——缓存失效策略属于业务，不属于连接；④ 每一个 <code>request_*</code> 变体都要求 <code>Conn</code> 懂更多别处的知识，信息泄漏四处开花。</p>
+<p>这不是「往下压复杂度」，而是<strong>把三个不同层的职责压进了同一个类</strong>。压下去的必须是「与本模块功能密切相关」的复杂度；重试策略、协议解析、业务缓存，没有一个属于「一条 TCP 连接」。</p>
+</div>
+</div>
+<p>改法：按层拆回去，每层只压自己那份。<code>Conn</code> 只管「发字节、收字节、报告错误」；重试策略放 <code>RetryPolicy</code>（或调用方）；协议解析放 <code>Codec</code>；业务缓存放业务层。然后<strong>在每一层内部</strong>把该层的麻烦吃干净：<code>Conn</code> 自己处理 EINTR、自己处理短写、自己在关闭时报告清晰的错误——这些才是它该扛的。</p>
+<p>一个实用的自检：<em>如果把这个类名换掉，它内部做的事还讲得通吗？</em> <code>Conn</code> 里做业务缓存，换成任何名字都别扭，这就是信号。</p>
+</div>
+
+<h2><span class="num">8.5</span>为什么这对「评审说不出所以然」有用</h2>
+
+<p>痛点二是「评审时只会说『不太好』」。这一章给了你一句有推论支撑的话，而不是一个感受：</p>
+
+<p>当你看到 <code>void f(int flags)</code> 或者 <code>Config{...}</code> 被传进一个模块，你可以问：<strong>这个值，模块自己能不能算出来？</strong></p>
+
+<ul>
+  <li>能算 → 参数不该存在，模块没把问题解决完。</li>
+  <li>不能算，且用户更懂（优先级、业务意图）→ 参数合理，但要有默认值。</li>
+  <li>不能算，用户也不懂（缓存大小、重试间隔）→ 这是把难题推给了不懂的人，最糟的一类。</li>
+</ul>
+
+<p>这三句话比「这个设计不太好」有力得多，因为它指向了具体动作：删掉这个参数，或给它算一个默认值。</p>
+
+<h2><span class="num">8.6</span>一条给底层代码的补充</h2>
+
+<p>书是通用软件设计书，但这一章在系统编程里有额外的分量，值得说清楚，因为「往下压」在那里不是风格问题，是正确性问题。</p>
+
+<p><strong>错误处理的归属，决定了系统在故障下的行为。</strong>「每个调用方自己检查返回值」这种设计，在有一千个调用点的代码库里等价于「总有一个地方忘了检查」。把它压进一层（内部重试、内部转成 <code>Result</code>、或按第 10 章的办法让错误不存在），正确性就从「N 处都要对」变成「1 处要对」。</p>
+
+<p><strong>但这要求压下去的那一层真的懂。</strong>如果 <code>Conn</code> 不懂业务，它就没法决定「这个错误该重试还是该上报」——这时正确的做法不是硬压，而是把<em>决定权</em>和<em>执行权</em>分开：<code>Conn</code> 负责准确报告（<code>Result&lt;T, Err&gt;</code>，错误类型分明），策略留给懂的人。这仍然是「降低复杂性」，只是压的是「机械的麻烦」（EINTR、短写、超时计算），而不是「语义的判断」。</p>
+
+<div class="key">
+<p>一句话的判据：<strong>机械性的麻烦往下压，语义性的判断往上交。</strong> 前者压得越干净越好，后者压下去就会变成猜。</p>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>哪个参数该删</h2>
+
+<div class="quiz">
+  <p class="q"><span class="tag">单选</span>下面四个配置项，哪一个最应当<strong>删掉</strong>、由模块自己算？</p>
+  <button data-why="这个值取决于业务紧迫度，模块无法推断——属于「用户比实现更懂」，保留合理（但应有默认值）。">A. 请求优先级 <code>priority: u8</code></button>
+  <button data-why="业务语义，模块不该猜；保留，但应给默认策略。">B. 压缩级别 <code>level: 0..9</code></button>
+  <button data-ok="1" data-why="对。重试间隔可以由实测 RTT 推出（取成功响应时间的若干倍），而且用户几乎不可能比实现算得准——这是书里点名的典型。">C. 重传间隔 <code>retry_ms: u32</code></button>
+  <button data-why="这属于部署事实（数据放哪），模块无从得知，必须由外部提供。">D. 数据目录 <code>data_dir: Path</code></button>
+  <p class="feedback"></p>
+</div>
+
+<h2><span class="num">练习</span>压下去，还是推上去</h2>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>模块在写文件时可能遇到 <code>EINTR</code>，现在把这个 errno 原样返回，要求调用方重试。</p>
+    <div class="opts">
+      <button data-ok="1">该往下压</button>
+      <button>该往上推</button>
+      <button>该做成配置</button>
+    </div>
+    <p class="note">EINTR 是纯粹的机械麻烦，与语义无关，模块内部循环重试即可。返回它只是把「正确性」复制到了每个调用点。</p>
+  </div>
+
+  <div class="row">
+    <p>一个 RPC 客户端在连接失败时，不知道业务上该重试还是该向用户报错，于是自己重试 3 次后放弃。</p>
+    <div class="opts">
+      <button>该往下压</button>
+      <button data-ok="1">该往上推</button>
+      <button>该做成配置</button>
+    </div>
+    <p class="note">这是语义判断，模块不懂业务就没资格决定。正确做法是返回分明的错误类型，让懂的人决定——注意这跟「做成配置」不同：配置是把决定推给不懂的人。</p>
+  </div>
+
+  <div class="row">
+    <p>调用方每次用 <code>PageCache</code> 前都要自己算出「该读哪几个页、按什么顺序读」。</p>
+    <div class="opts">
+      <button data-ok="1">该往下压</button>
+      <button>该往上推</button>
+      <button>保持现状</button>
+    </div>
+    <p class="note">页的选取与顺序正是「页缓存」这个抽象的核心职责；让调用方算，等于把模块的核心工作外包了出去。</p>
+  </div>
+
+  <div class="row">
+    <p>一个序列化库要求调用方先 <code>reserve(n)</code> 再逐条 <code>push</code>，n 算错就会静默截断。</p>
+    <div class="opts">
+      <button>该往上推</button>
+      <button>该做成配置</button>
+      <button data-ok="1">该往下压</button>
+    </div>
+    <p class="note">「容量够不够」是库自己知道的事（它知道每条多大），却让调用方去算，而且算错不报错——这是把内部知识外泄 + 制造未知的未知。库应自己扩容。</p>
+  </div>
+</div>
+
+<h2><span class="num">练习</span>重写一个「灵活」的接口</h2>
+
+<div class="recall">
+<p>你的 <code>BufWriter</code> 有四个参数：<code>capacity</code>、<code>flush_threshold</code>、<code>sync_on_drop</code>、<code>max_batch</code>。团队里没人说得清后三个该填什么，测试里各填了不同的值。用第 8 章的办法重写它，并说明每个参数的去向。</p>
+<p class="hint-inline">提示：逐个问「模块能不能自己算」。</p>
+<textarea placeholder="每个参数：删掉 / 给默认值 / 保留，理由是什么？"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p>先分类，再动手：</p>
+<pre><code>class BufWriter {
+public:
+    // capacity 有默认值，且默认值来自实测：64 KiB 在多数设备上
+    // 已能吃满顺序写带宽，再大只增延迟。
+    explicit BufWriter(size_t capacity = kDefaultCapacity);
+    ~BufWriter();                       // 析构时必然 flush，不询问
+
+    void write(std::span&lt;const std::byte&gt;);
+    void flush();                       // 显式刷盘，语义单一
+};</code></pre>
+<p>四个参数的去向：</p>
+<ul>
+  <li><code>capacity</code> → <strong>保留，但给默认值</strong>。它是部署/负载相关的事实，调用方可能真知道；默认值让 90% 的调用点不用写它。</li>
+  <li><code>flush_threshold</code> → <strong>删掉</strong>。它和 <code>capacity</code> 是同一件事的两种说法（写满就刷），两个旋钮只会互相打架。</li>
+  <li><code>sync_on_drop</code> → <strong>删掉</strong>。析构函数不该有两种语义——这是「用户能比我们决定得更好吗」的典型反例：两种选择都会有人踩坑，而其中一个（丢弃数据）是错的。要么永远 flush，要么根本不缓冲。</li>
+  <li><code>max_batch</code> → <strong>删掉，内部算</strong>。批量大小取决于底层 <code>write()</code> 的行为，模块比调用方更清楚，应该自己探测。</li>
+</ul>
+<p>收益是具体的：调用点从「四个数字」变成「零个或一个」；测试不用再为每个组合造用例；<code>sync_on_drop</code> 那个「有时丢数据」的 bug 类别直接消失。</p>
+<p>诚实的边界：如果确实有调用方需要「绝不阻塞的 flush」（比如信号处理路径），那应该新增一个<strong>不同的方法</strong>（<code>try_flush()</code>），而不是给同一个方法加一个布尔开关——开关会让两条路径共享一份实现，而它们的行为要求恰好相反。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>带走什么</h2>
+
+<p>这一章可以压缩成一个动作：把模块的公开接口摊开，对每一个参数和每一个可能抛出的错误问一句——<strong>「这个决定，凭什么要调用方来做？」</strong> 答不上来的，就是该你扛的。</p>
+
+<div class="key">
+<p><strong>贴进 code review 的话：</strong>「这三个参数（容量、重试间隔、批大小）用户基本不可能比我们算得准，填错还不会报错、只是悄悄变慢。能不能模块内部算出默认值，只保留确实需要外部决定的那一个？——模块应该完整地解决问题，而不是把难题外包给调用方。」</p>
+</div>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch08.html">第 8 章 降低复杂性（中文全译）</a> — 这一章很短，值得整章读一遍；重传间隔那个例子是全书对「配置参数」最有力的一击。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">把你项目里那个「参数最多」的构造函数贴给我。我们一个个过：哪些是机械麻烦（该压）、哪些是语义判断（该交出去）、哪些其实是同一个旋钮的两种说法（该合并）。</p>
+
+  <div class="nav-links">
+    <span><a href="0007-different-layers.html">← L7 · 不同的层</a></span>
+    <span><a href="0009-better-together-or-apart.html">L9 · 在一起还是分开 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

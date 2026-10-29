@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L21 · 结论：全书回顾 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 21 章 · 课程 21 / 21</p>
+
+<h1>结论：全书回顾</h1>
+<p class="standfirst">最后一课做两件事：把 20 章压成一张能背下来的图，再给你一页纸带走。作者最后一章只说了三句话，但那三句话决定了你以后怎么看待「花时间做设计」这件事。</p>
+
+<h2><span class="num">21.1</span>作者在最后一章说的三句话</h2>
+
+<p>第 21 章非常短。它不引入新概念，只回答一个问题：<strong>这本书的所有建议，代价是什么？</strong></p>
+
+<p>第一句，代价是真实的：这些做法在项目早期需要<em>额外</em>的工作量；而且如果你还不习惯想设计，学这些技巧的过程中你会<strong>更慢</strong>。作者没有粉饰这一点。他还补了一句更扎心的：如果对你来说唯一重要的是「让当前代码尽快跑起来」，那么思考设计就像一件苦差事，它在妨碍你达成真正的目标。</p>
+
+<p>第二句，是这本书真正的立场：如果好设计本身就是你在意的目标，那么这些想法会让编程<strong>变得更有趣</strong>。设计是一个迷人的谜题——如何用最简单的结构解决特定问题。探索不同的方案是有意思的，找到既简单又强大的解法是一种很棒的感觉。</p>
+
+<p>第三句，是投资回报：</p>
+
+<div class="excerpt">
+<span class="src">第 21 章 · 投资的回报</span>
+<p>你对优质设计的投资会很快获得回报。项目开始时仔细定义的模块，会在你一遍又一遍复用它们时省下你的时间；你六个月前写下的清晰注释，会在你回来加新功能时省下你的时间。花在磨练设计技能上的时间也会回报：随着技能和经验增长，你会发现自己做设计越来越快。<strong>一旦你掌握了方法，好的设计实际上并不会比草率的设计花更多时间。</strong></p>
+</div>
+
+<p>最后那句是整本书的赌注。它不是说「好设计免费」，而是说：<strong>草率设计的成本并没有消失，它只是被推迟了，并且带利息。</strong> 你在写的时候省下的十分钟，会在三个月后的某个下午以三小时的形式还回来。</p>
+
+<p>作者在结尾还留了一个对「评审」场景特别有用的画面：优秀的设计师把大部分时间花在设计阶段，这很有趣；糟糕的设计师把大量时间花在复杂而脆弱的代码里找 bug。</p>
+
+<div class="key">
+<p><strong>一句能贴进评审的话：</strong>「这里省下的结构，会在三个月后以三倍的时间还回来。我们花二十分钟把它设计对，好吗？」</p>
+</div>
+
+<h2><span class="num">21.2</span>全书主线：一张图</h2>
+
+<p>现在把 20 章收起来。它们不是 20 个并列的技巧，而是<strong>一条因果链</strong>：从一个敌人出发，经过它的症状与成因，走到一组具体手段，最后落在两种新出现的场景上。</p>
+
+<div class="sheet">
+<div class="diag">
+<p><strong>① 唯一的敌人</strong>　复杂性 = 任何让系统难以理解和修改的东西。它不是代码量，是开发者在某一刻的体验。（L1）</p>
+<p><strong>② 它的三个症状</strong>　变更放大 · 认知负荷 · 未知的未知。前两个你能感觉到，第三个最致命——你连「这里有问题」都不知道。（L2）</p>
+<p><strong>③ 它的两个成因</strong>　依赖 · 晦涩。所有手段最终都在削这两个东西。（L2）</p>
+<p><strong>④ 唯一的策略</strong>　战略投资：每次改动留 10–20% 做设计，而不是等危机过去再清理。能跑的代码是不够的。（L3）</p>
+<p><strong>⑤ 核心手段：深模块</strong>　接口简单 &gt; 实现简单。深度 = 接口藏起的复杂度。（L4）</p>
+<p><strong>⑥ 怎么做到深</strong>　信息隐藏。每个模块藏一个设计决策；泄漏是最重要的红旗，尤其是时间分解造成的后门泄漏。（L5）</p>
+<p><strong>⑦ 更深一层</strong>　通用模块比专用模块深；但通用代码与专用代码必须分开。（L6、L9）</p>
+<p><strong>⑧ 分层与合并</strong>　不同的层要有不同的抽象（否则是 pass-through）；该合的合、该拆的拆——判据是知识，不是执行顺序。（L7、L9）</p>
+<p><strong>⑨ 消除复杂度</strong>　把特殊情况定义成不存在：让错误不可能发生，而不是到处检查它。这是「降低复杂度」而非「管理复杂度」。（L8、L10）</p>
+<p><strong>⑩ 设计两次</strong>　动手前先想两个完全不同的方案，比较后再选。这是最便宜的一次投资。（L11）</p>
+<p><strong>⑪ 注释与命名</strong>　注释写代码里不明显的东西；名字要精确到能区分。写不出来，往往说明设计有问题。（L12–L15）</p>
+<p><strong>⑫ 修改既有代码</strong>　保持一致性；让代码显而易见；把「不明显」当成 bug 来修。（L16–L18）</p>
+<p><strong>⑬ 新场景</strong>　对任何流行做法先过复杂性这道闸门（L19）；性能问题用同一个解——简化关键路径（L20）。</p>
+</div>
+</div>
+
+<p>这条链上有一个东西是恒定的：<strong>所有的判断最后都归结为一个问题——这个决定让「理解这段代码」变容易了还是变难了？</strong></p>
+
+<p>注意 ⑦ 和 ⑧ 的位置。很多人读这本书只记住「深模块」和「信息隐藏」，然后开始到处拆类，结果越拆越乱——这正是你的第三个痛点。问题在于：<strong>深模块不是拆得细，而是藏得多。</strong> 一个 2000 行、接口两个方法的类，可能比五个各 300 行、互相调用的类更深。拆分的判据是「有几个独立的设计决策」，不是「代码有多长」。</p>
+
+<div class="anti">
+<h4>反例 · 把「深模块」读成「多多拆类」</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>// 五个类，各管一段，看起来"职责清晰"
+class HeaderCodec  { Header decode(Span); };
+class BodyReader   { size_t read_into(uint8_t*, size_t); };
+class FrameDecoder { Frame next(); };   // 内部 new 一个 BodyReader
+class Checksum     { uint32_t of(Span); };
+class FrameSink    { void push(Frame); };
+
+// 调用方每处理一帧要按顺序走四个：
+FrameDecoder d(sock);
+Frame f = d.next();              // 内部: HeaderCodec + BodyReader
+if (Checksum{}.of(f.body) != f.sum) return kBadCrc;
+sink.push(f);</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p><code>FrameDecoder</code> 只做一件事：把 <code>HeaderCodec</code> 和 <code>BodyReader</code> 串起来。它是第 7 章的 pass-through 层——<strong>把「一帧怎么组装」这个知识撕成了两半</strong>，而两半必须严格遵守同一个顺序约定，于是你改分片逻辑要动两个文件。</p>
+<p><code>Checksum</code> 只有一个静态方法，是典型的浅模块：接口和实现一样大。它还泄漏了一个决策——「校验覆盖哪些字节」被推给了调用方，而这是协议的一部分，本不该由调用方决定。</p>
+<p>结果：<strong>三个决定（帧结构、校验范围、推送时机）散在五个类里，调用方还要按正确顺序调四次。</strong> 这不是深模块，这是拆得细但每个都浅。</p>
+</div>
+</div>
+<p>改法：这些都共享同一个知识（线路上的帧格式），应合并成一个 <code>FrameCodec</code>，接口只留 <code>next(Frame&amp;)</code>——它在内部完成头部解析、正文读取、校验，失败时返回错误。校验范围这个决策从此只活在一个文件里。至于 <code>FrameSink</code>，只有当它真的有自己的策略（背压、批处理、多路分发）时才值得独立存在。</p>
+</div>
+
+<h2><span class="num">21.3</span>设计原则小结（21 条压缩版）</h2>
+
+<p>下面是全书原则的压缩。左边是原则，右边是它针对的病症——<strong>记不住原则时，记病症</strong>，从症状反推手段更快。</p>
+
+<div class="excerpt">
+<span class="src">全书小结 · 设计原则</span>
+<p>复杂性是逐步增加的——你必须努力处理小事情。能跑起来的代码是不够的。持续进行少量投资以改善系统设计。模块应该较深；接口的设计应尽可能简化最常见的用法。一个模块拥有简单的接口，比拥有简单的实现更重要。通用模块更深入；通用代码与专用代码要分开。不同的层应具有不同的抽象。降低复杂度。把错误和特殊情况定义成不存在。设计两次。注释应描述代码中不明显的内容。软件的设计应易于阅读而不是易于编写。软件开发的增量应该是抽象而不是功能。</p>
+</div>
+
+<table>
+  <thead><tr><th>#</th><th>原则</th><th>它治什么</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>复杂性是逐步累积的，必须在意小事</td><td>「这一点点无所谓」的十次叠加</td></tr>
+    <tr><td>2</td><td>能跑起来的代码是不够的</td><td>战术编程</td></tr>
+    <tr><td>3</td><td>持续做少量设计投资（10–20%）</td><td>「等有空再重构」= 永不</td></tr>
+    <tr><td>4</td><td>模块应该深</td><td>类炎：一堆浅类</td></tr>
+    <tr><td>5</td><td>接口应为最常见的用法而设计</td><td>过度暴露：为罕见功能付常见代价</td></tr>
+    <tr><td>6</td><td>简单接口比简单实现更重要</td><td>把复杂度推给调用方</td></tr>
+    <tr><td>7</td><td>通用模块更深入</td><td>一个需求一个特例</td></tr>
+    <tr><td>8</td><td>通用代码与专用代码分开</td><td>特殊-通用混合物</td></tr>
+    <tr><td>9</td><td>不同的层要有不同的抽象</td><td>pass-through method</td></tr>
+    <tr><td>10</td><td>降低复杂度，而不只是管理它</td><td>到处加检查、加配置</td></tr>
+    <tr><td>11</td><td>把错误和特殊情况定义成不存在</td><td>异常路径污染主路径</td></tr>
+    <tr><td>12</td><td>设计两次</td><td>第一个想到的方案</td></tr>
+    <tr><td>13</td><td>注释描述代码中不明显的东西</td><td>注释复述代码 / 该说的没说</td></tr>
+    <tr><td>14</td><td>软件应易于阅读，而非易于编写</td><td>为省打字而牺牲清晰</td></tr>
+    <tr><td>15</td><td>开发的增量应该是抽象，不是功能</td><td>功能驱动，抽象零散长出</td></tr>
+    <tr><td>16</td><td>先写注释（接口先于实现）</td><td>实现倒推接口，接口变浅</td></tr>
+    <tr><td>17</td><td>实现继承要慎用，优先组合</td><td>继承层次内的状态泄漏</td></tr>
+    <tr><td>18</td><td>先让设计简单，性能通常会跟着来</td><td>提前优化</td></tr>
+    <tr><td>19</td><td>性能靠度量，不靠直觉</td><td>凭感觉改代码</td></tr>
+    <tr><td>20</td><td>围绕关键路径设计，把特殊情况赶出去</td><td>热路径上一堆分支</td></tr>
+    <tr><td>21</td><td>复杂度必须换来可测量的收益</td><td>变复杂了却快不起来</td></tr>
+  </tbody>
+</table>
+
+<p>如果只能记三条：<strong>③ 持续投资、④ 深模块、⑪ 定义错误为不存在。</strong> 这三条覆盖了绝大多数真实决策。如果只能记一条：<strong>每次要写「先这样，以后再说」的时候，停三十秒。</strong></p>
+
+<h2><span class="num">21.4</span>红旗清单（评审时用）</h2>
+
+<p>这是「说不出所以然」的解药：<strong>把感觉翻译成名字。</strong> 说不出哪里不对的时候，对照下表找最像的那一行，然后用括号里的句式说出来。</p>
+
+<table>
+  <thead><tr><th>红旗</th><th>你怎么认出来</th></tr></thead>
+  <tbody>
+    <tr><td><strong>浅模块</strong></td><td>接口不比实现简单多少；一个方法只转发一行</td></tr>
+    <tr><td><strong>信息泄漏</strong></td><td>同一个设计决策（格式、单位、所有权）出现在两个以上文件</td></tr>
+    <tr><td><strong>时间分解</strong></td><td>拆分依据是「先读后写」这类执行顺序，导致两边都懂同一份格式</td></tr>
+    <tr><td><strong>过度暴露</strong></td><td>为了用最常见功能，调用方必须知道十个罕见参数</td></tr>
+    <tr><td><strong>pass-through method</strong></td><td>签名与下一层几乎相同，实现只有一行调用</td></tr>
+    <tr><td><strong>重复</strong></td><td>同一段逻辑出现两次以上，改一处必须记得改另一处</td></tr>
+    <tr><td><strong>特殊-通用混合物</strong></td><td><code>if (mode == kSpecial)</code> 散落在通用流程里</td></tr>
+    <tr><td><strong>联合方法</strong></td><td>不看 A 的实现就读不懂 B</td></tr>
+    <tr><td><strong>注释复述代码</strong></td><td>删掉这行注释，信息一点没少</td></tr>
+    <tr><td><strong>实现细节污染接口</strong></td><td>接口注释在讲「怎么做的」，而调用方不需要知道</td></tr>
+    <tr><td><strong>含义模糊的名字</strong></td><td><code>data</code>、<code>info</code>、<code>manager</code>、<code>handle()</code></td></tr>
+    <tr><td><strong>很难起名</strong></td><td>想不出精确的名字 —— 这本身是设计信号，不是词汇量问题</td></tr>
+    <tr><td><strong>很难描述</strong></td><td>要把接口文档写完整，得写一大段 —— 说明它做了太多事</td></tr>
+    <tr><td><strong>不显而易见的代码</strong></td><td>读代码的人需要额外信息才能判断它在干什么</td></tr>
+  </tbody>
+</table>
+
+<div class="card">
+<h4>怎么把红旗变成评审意见</h4>
+<p>不要写「这里不太好」。写：<strong>「这是信息泄漏：单位（毫秒 vs 微秒）同时出现在 <code>timer.h</code> 和 <code>stats.cc</code>。建议把单位收进 <code>Duration</code> 类型，让它在两处之外无法被误读。」</strong></p>
+<p>格式是三段：<em>命名问题 → 指出它出现在哪几处 → 给出一个具体改法。</em> 三段齐了，对方就无法反驳「你说得不够具体」。</p>
+</div>
+
+<h2><span class="num">21.5</span>留给你的三个动作</h2>
+
+<p>书读完了，接下来只有三件事值得做。它们都不需要重构整个项目。</p>
+
+<div class="grid2">
+<div class="card">
+<h4>① 每周一次「深模块审计」</h4>
+<p>挑一个你最近改过的模块，数两个数：<strong>公开接口有几项</strong>、<strong>实现有多少行</strong>。比值越低越浅。挑那个比值最差的，只做一件事——想办法减掉一个接口项。</p>
+<p>不需要大改。删掉一个 getter、合并两个几乎一样的方法、把一个参数收进内部，都算。</p>
+</div>
+<div class="card">
+<h4>② 评审时说出名字</h4>
+<p>下一份 MR，强制自己至少留一条带术语的意见：用「信息泄漏」「浅模块」「变更放大」「时间分解」中的任意一个。</p>
+<p>说不出来，说明你其实没定位到问题——那就先别留意见，回去看代码。</p>
+</div>
+</div>
+
+<div class="card">
+<h4>③ 给那 10–20% 一个固定位置</h4>
+<p>抽象的投资不能靠「有空的时候」。把设计讨论塞进流程里：每次改动前，用十分钟写三行——<strong>这次改动的知识属于谁？会泄漏到几个文件？如果三个月后要改同一处，我希望只碰哪个文件？</strong></p>
+<p>三行写完再动手。这就是第 3 章说的战略投资，成本是一个会议的前十分钟。</p>
+</div>
+
+<h2><span class="num">21.6</span>最后一句</h2>
+
+<p>这本书从头到尾只处理一件事，而它的答案异常朴素：<strong>复杂性不是靠聪明解决的，是靠一次次小选择累积出来的。</strong></p>
+
+<p>你没法一次性把系统设计对——作者在第 1 章就说了，项目开始时不可能充分预见。你只能做的是：每个增量都留一点余量给抽象，每次修改都顺手把经过的那一处弄干净一点，每次要写「以后再说」的时候真的停三十秒。</p>
+
+<p>二十章的内容，最后压成一句能在你下次想抄近路时响起来的话：</p>
+
+<div class="key">
+<p><strong>能跑的代码是不够的。今天省下的结构，会在三个月后以三倍的时间还回来；而在写下的那一刻，把它设计对，几乎不花额外时间。</strong></p>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>全书应用题</h2>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>一个 <code>Config</code> 模块，<code>get(key)</code> 返回字符串，全项目 40 处调用各自 <code>std::stoi</code>、<code>== "true"</code>、<code>split(',')</code>。</p>
+    <div class="opts">
+      <button>浅模块</button>
+      <button data-ok="1">信息泄漏 + 变更放大</button>
+      <button>时间分解</button>
+    </div>
+    <p class="note">「配置值怎么解析」这个决策泄漏到了 40 个调用点。改一个格式（比如支持 <code>1k</code> 这种后缀）就要改 40 处。修法：<code>get_int(key, default)</code> / <code>get_bool</code> / <code>get_list</code>，把解析收进模块——也正是第 5.4 节的例子。</p>
+  </div>
+
+  <div class="row">
+    <p>一个 1800 行的 <code>Connection</code> 类，公开接口只有 <code>send(Span)</code>、<code>recv()</code>、<code>state()</code> 三个；内部管着 TLS、重连、缓冲、超时。</p>
+    <div class="opts">
+      <button>太胖了，该拆成五个类</button>
+      <button data-ok="1">深模块的正面样本</button>
+      <button>接口太少，过度隐藏</button>
+    </div>
+    <p class="note">接口三项、实现 1800 行 —— 深。但要注意一个前提：内部是不是真的只有一个知识体？如果 TLS 和重连各自有独立的设计决策、且未来会被别处复用，那才该抽出去（第 5 章的「抽出」）。<strong>拆分的判据是决策数量，不是行数。</strong></p>
+  </div>
+
+  <div class="row">
+    <p>一个解析函数，遇到不合法输入时返回错误码，调用方有 12 处都要写 <code>if (err) { log(); return err; }</code>，其中 9 处其实不可能出错。</p>
+    <div class="opts">
+      <button>该把错误码改成异常</button>
+      <button data-ok="1">该把不可能的情况定义成不存在</button>
+      <button>该给每处加断言</button>
+    </div>
+    <p class="note">第 10 章的核心：如果这 9 处<strong>在构造上</strong>不可能失败（比如输入已在前面校验过），那正确的做法是让那个错误不可能发生——拆出一个不返回错误的窄接口，或用一个类型表达「已验证」。加断言只是把不可能情况变成崩溃，仍然占着调用方的脑子。</p>
+  </div>
+
+  <div class="row">
+    <p>团队要引入一个新的「事件驱动架构」，理由是「业界都在用」。你被问意见。</p>
+    <div class="opts">
+      <button>先照做，以后再评估</button>
+      <button>反对，因为书上没写</button>
+      <button data-ok="1">先问它削掉了哪种复杂度</button>
+    </div>
+    <p class="note">第 19 章的闸门，也是第 21 章的收尾：任何新范式都要从复杂性角度被挑战。要问的具体问题是——它减少依赖还是增加依赖？它让「理解一次改动的影响」变容易还是变难？<strong>答不出来就不要上。</strong></p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>带走一页</h2>
+
+<div class="recall">
+<p>不看上面，写下你自己版本的「三条原则」。要求：每条必须对应你真实代码库里的一个具体位置（文件或模块名），并且写出「这周我要改的那一处」。写不出来，就说明这一课还没落地。</p>
+<p class="hint-inline">提示：如果只能改一处，改哪一处收益最大？</p>
+<textarea placeholder="原则 1：…… → 我的项目里：…… → 这周改：……"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p>没有标准答案，但有三个合格的判据：</p>
+<ol>
+  <li><strong>具体到文件。</strong>「要注意信息隐藏」不合格；「<code>src/io/reader.cc</code> 里的 <code>parse_header</code> 和 <code>writer.cc</code> 都懂分块格式，要合并」合格。</li>
+  <li><strong>能在一小时内动手。</strong>如果那条改动需要两周，那它不是一个动作，是一个项目——拆小。</li>
+  <li><strong>改完能验证。</strong>怎么知道变好了？接口少了一项？某个改动从碰三个文件变成碰一个？测试变简单了？</li>
+</ol>
+<p>一个真实的例子长这样：</p>
+<ul>
+  <li>原则：<em>同一个知识只能活在一个文件里。</em></li>
+  <li>我的项目：<code>net/proto.cc</code> 和 <code>store/serde.cc</code> 各自实现了一遍 varint 编码。</li>
+  <li>这周改：把 varint 收进 <code>util/varint.h</code>，两边都调它。半天。</li>
+</ul>
+<p>三行写完，这本书对你就开始产生复利了。剩下的不是读，是做。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>课程到此结束</h2>
+
+<p>21 课走完。你现在手上有：一把量复杂性的尺子、一组可命名的红旗、一条能贴进评审的话术，和一个关于性能的反直觉结论——<strong>让它简单，它就会快。</strong></p>
+
+<p>接下来最好的用法不是重读，是打开你正在维护的那个仓库，挑一个你这周本来就要改的地方，用上面任意一条原则重新看它一遍。一次一个文件，比一次一个架构有效得多。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch21.html">第 21 章 结论（中文全译）</a> — 很短，值得在你想放弃设计的时候重读一遍。</p>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/summary.html">全书设计原则与危险信号小结</a> — 官方版的两张清单，和本课 21.3 / 21.4 对照着看，能发现我这份压缩漏掉了什么。</p>
+  <p><a href="https://web.stanford.edu/~ouster/cgi-bin/book.php">作者官方书页</a> — 勘误、课程幻灯片，以及作者亲自答疑的讨论组。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">课程结束了，但真正有用的部分才刚开始：<strong>贴一段你这周要改的真实代码</strong>，我们一起用这 21 条过一遍，看哪一条真的能落地。比再读一遍书有效得多。</p>
+
+  <div class="nav-links">
+    <span><a href="0020-designing-performance.html">← L20 · 设计性能</a></span>
+    <span><a href="../index.html">← 回到课程目录</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

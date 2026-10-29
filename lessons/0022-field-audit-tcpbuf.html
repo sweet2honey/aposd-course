@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L22 · 实战审查：一个真实模块的三件套 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 实战审查 · 附加课（合练第 4、5、8、16 章）</p>
+
+<h1>实战审查：一个真实模块的三件套</h1>
+<p class="standfirst">前 21 课用的是玩具例子。这一课换真货：你自己仓库里那个 <code>TCPBuf</code>，286 行，一个藏了三个月的 double free。按<a class="gl" href="../reference/glossary.html#depth">深度</a><span class="en-inl">depth</span>、泄漏、<a class="gl" href="../reference/glossary.html#change-amplification">变更放大</a><span class="en-inl">change amplification</span>走一遍，看这三把尺子能不能当场量出东西来。</p>
+
+<h2><span class="num">22.1</span>为什么挑这一段</h2>
+
+<p>前面的课为了讲清楚概念，例子都压到十几行。压缩是有代价的：真实代码里，一个错误的形状往往同时踩中三四课的内容，而且它<strong>不报错</strong>。玩具例子不会教你这个。</p>
+
+<p>这次的材料是 <code>Modern-Cpp-Basics/08-String &amp; Stream/example/src/TCPBuf.h</code>，286 行，你写的一个把 socket 包成 <code>std::streambuf</code> 的缓冲区。选它的理由有三条：它有真实的使用场景（<code>stream &lt;&lt; str</code> 就够）；它的复杂度是自找的（一个自管内存的模板类）；它的失败方式是安静的（客户端程序跑了几十次都是好的）。</p>
+
+<p>下面每一步都用真的编译器、真的 AddressSanitizer 出结果，不是推演。<code>g++ (Ubuntu 11.4.0)</code>，<code>-std=c++20 -fsanitize=address,undefined</code>。</p>
+
+<h2><span class="num">22.2</span>第一件：深度 —— 数两个数</h2>
+
+<p>第 4 课给的算法就一句话：<strong>接口有多大，实现有多少</strong>。比值越低的越深。现在对 <code>UserManagableBuffer</code> 数一遍。</p>
+
+<p>公开接口五项：构造函数、<code>begin()</code>、<code>end()</code>、<code>GetRawBuffer()</code>、<code>GetSize()</code>、<code>SetBuffer(T*, std::streamsize)</code>。实现 69 行，全是 <code>new[]</code>/<code>delete[]</code> 和 <code>std::exchange</code> 的编排。</p>
+
+<p>先别急着算比值，先查调用点。在整个仓库里 grep 这五项：</p>
+
+<pre><code>$ grep -rn "GetSize()\|UserManagableBuffer(" --include=*.h --include=*.cpp .
+TCPBuf.h:35:    UserManagableBuffer(std::streamsize size)   # 定义处，零调用
+TCPBuf.h:44:            bufferSize_{ std::exchange(another.bufferSize_, 0) }
+                                     # GetSize() 零调用
+</code></pre>
+
+<p><strong>五项接口里有两项没有调用者。</strong> 一个是 <code>GetSize()</code>，一个是那个按尺寸构造的构造函数。它们不是「将来可能要用」，是从写下来那天到今天一次都没被调用过。</p>
+
+<p>这就是第 4 课说的「接口比必要的宽」的具体形态：<strong>它不是设计出来的，是长出来的。</strong> 写模板类的时候顺手把 <code>GetSize()</code> 也导出了，因为「反正别人可能想知道大小」。代价不是行数，是每一个读这个头文件的人都得为这五项分配注意力，并且判断哪几项是真的。</p>
+
+<div class="excerpt">
+<span class="src">第 4 章 · 模块深度</span>
+<p>模块深度是考虑成本与收益的一种方式。模块的接口越小越简单，引入的复杂性就越小。最好的模块是那些收益最大、成本最低的模块。</p>
+</div>
+
+<p>这句里的「成本」指的是<strong>调用方的成本</strong>，不是维护成本。所以判断一个接口项该不该留，问的不是「以后会不会用到」，而是「用到它的那一次，值不值得让所有人每次都看见它」。</p>
+
+<div class="key">
+<p><strong>一句话：</strong>接口里每一项都是永久成本，没有「暂时先留着」这一档。要么有人调它，要么删掉。</p>
+</div>
+
+<h2><span class="num">22.3</span>第二件：泄漏 —— 谁拥有这块内存</h2>
+
+<p><code>SetBuffer</code> 是这段代码里最有意思的一个方法。它做两件完全不同的事：</p>
+
+<pre><code>void SetBuffer(T *s, std::streamsize n)
+{
+    auto oldBuffer = buffer_, needDelete = !userManaged_;
+    if (s == nullptr) {
+        // 自己分配
+        if (n == bufferSize_ &amp;&amp; !userManaged_) return;
+        buffer_ = n == 0 ? nullptr : new T[n];
+        userManaged_ = false;
+    } else {
+        // 接管调用方给的内存
+        buffer_ = s;
+        userManaged_ = true;
+    }
+    if (needDelete) delete[] oldBuffer;
+}
+</code></pre>
+
+<p>传 <code>nullptr</code> 是「你自己分配 n 个字节」；传一个指针是「接管这块内存，别 delete 它」。<code>userManaged_</code> 这个 bool 存在的唯一目的就是记住走了哪条路。</p>
+
+<p>现在查调用点。全仓一共四处：</p>
+
+<pre><code>TCPBuf.h:108:            inBuffer.SetBuffer(nullptr, inSize);
+TCPBuf.h:113:            outBuffer.SetBuffer(nullptr, outSize);
+TCPBuf.h:131:        inBuffer_.SetBuffer(nullptr, 0);
+TCPBuf.h:132:        outBuffer_.SetBuffer(nullptr, 0);
+</code></pre>
+
+<p><strong>四处，全都是 <code>nullptr</code>。</strong> 接管那条分支从来没有被走过，<code>userManaged_</code> 在程序整个生命期里恒为 <code>false</code>。</p>
+
+<p>这意味着两件事。第一，那 12 行分支代码是死的。第二，更要紧的：<strong>「这块内存归谁」这个决策被摆到了接口上，而没有任何调用方需要它。</strong> 这是第 5 课说的<a class="gl" href="../reference/glossary.html#back-door-leakage">后门泄漏</a><span class="en-inl">back-door leakage</span>——不是接口太宽，是接口把内部的一个设计决定（所有权）变成了调用方必须知道的事。</p>
+
+<div class="excerpt">
+<span class="src">第 5 章 · 后门泄漏</span>
+<p>另一种可能的做法是从所有受影响的类中提取信息，创建一个只封装这些信息的新类。但这只有在你能找到一个从细节中抽象出来的简单接口时才有效；如果新类通过接口公开了大部分知识，那它就没提供太多价值——你只是用通过接口的泄漏替换了后门泄漏。</p>
+</div>
+
+<p>这段引用里的判断标准可以直接拿来用：<strong>抽出一个类之后，那个知识还留在接口上，就等于没抽。</strong> <code>UserManagableBuffer</code> 确实把内存管理收进来了，但它把「谁是所有者」原样推了出去，所以它没削掉<a class="gl" href="../reference/glossary.html#complexity">复杂性</a><span class="en-inl">complexity</span>，只是搬了个地方。</p>
+
+<p>换个角度看会更清楚。如果明天有个调用方想复用一块已经读好的缓冲区，他得调 <code>SetBuffer(ptr, n)</code>，然后<strong>必须</strong>知道三件事：这个类从此不会 delete 它；生命周期得由自己管到 <code>close()</code> 之后；传进去的 <code>n</code> 必须和真实长度一致，否则 <code>end()</code> 会算错。三条，一条写错就是内存错误。而实际上没有人需要这个能力。</p>
+
+<p>第 8 课的判据在这里特别好用：</p>
+
+<div class="excerpt">
+<span class="src">第 8 章 · 配置参数</span>
+<p>在导出配置参数之前，请问自己：用户（或更高级别的模块）是否能够确定一个比我们在此确定的更好的值？</p>
+</div>
+
+<p>同样的问题可以套到任何「参数化」上，包括这里的「让调用方决定内存所有权」。答案是不能——调用方对这块缓冲的用法一无所知，它唯一会做的就是传 <code>nullptr</code>。</p>
+
+<div class="key">
+<p><strong>一句话：</strong>当一个参数在全部调用点都取同一个值时，它就不是参数，是没做完的决定。</p>
+</div>
+
+<h2><span class="num">22.4</span>第三件：变更放大 —— 那行 <code>std::move</code></h2>
+
+<p>现在看 <code>open()</code>，这也是真正出事的地方。</p>
+
+<pre><code>TCPBuf *open(Socket &amp;&amp;socket, std::ios::openmode mode,
+             std::streamsize inSize, std::streamsize outSize)
+{
+    UserManagableBuffer&lt;char_type&gt; inBuffer, outBuffer;   // :105 局部变量
+    if (mode &amp; std::ios::in)  inBuffer.SetBuffer(nullptr, inSize);
+    if (mode &amp; std::ios::out) outBuffer.SetBuffer(nullptr, outSize);
+
+    setg(inBuffer.begin(), inBuffer.end(), inBuffer.end());
+    setp(outBuffer.begin(), outBuffer.end());
+
+    socket_ = std::move(socket);
+    inBuffer = std::move(inBuffer), outBuffer_ = std::move(outBuffer);  // :121
+    return this;
+}
+</code></pre>
+
+<p>第 121 行有两个错误，套在一行里。<strong>第一个</strong>：<code>inBuffer</code> 是局部变量，成员叫 <code>inBuffer_</code>。少了下划线，于是赋值的目标和来源是同一个对象——自移动赋值。<strong>第二个</strong>：这行用逗号表达式把两个赋值串在一起，所以读的人扫过去只会注意后半截 <code>outBuffer_ = ...</code>（那个是对的），前半截就这么混过去了。</p>
+
+<p>自移动赋值为什么致命，要看 <code>operator=</code>：</p>
+
+<pre><code>UserManagableBuffer &amp;operator=(UserManagableBuffer &amp;&amp;another) noexcept
+{
+    if (!userManaged_) delete[] buffer_;              // 先释放自己的
+    userManaged_ = std::exchange(another.userManaged_, false);
+    buffer_     = std::exchange(another.buffer_, nullptr);
+    ...
+}
+</code></pre>
+
+<p>它<strong>没有自赋值检查</strong>。当 <code>this == &amp;another</code> 时：先 <code>delete[] buffer_</code> 把内存还掉；然后 <code>buffer_ = std::exchange(another.buffer_, nullptr)</code> —— <code>another</code> 就是自己，所以先读出<strong>已经被 delete 的那块指针</strong>，再赋回 <code>buffer_</code>。指针原地复活，指向已释放的内存。析构函数再 <code>delete[]</code> 一次。</p>
+
+<p>AddressSanitizer 的原文：</p>
+
+<pre><code>$ ./t
+ERROR: AddressSanitizer: attempting double-free on 0x506000000020
+    #0 operator delete[](void*) 
+    #1 Network::UserManagableBuffer&lt;char&gt;::~UserManagableBuffer()
+    #2 Network::TCPBuf::open(Socket&amp;&amp;, std::_Ios_Openmode, long, long)
+    #3 main  t.cpp:5
+freed by thread T0 here:
+    #0 operator delete[](void*)
+    #1 Network::UserManagableBuffer&lt;char&gt;::operator=(...)
+</code></pre>
+
+<p>栈很清楚：<code>operator=</code> 释放，析构函数再释放一遍。</p>
+
+<h3>为什么它一直没炸</h3>
+
+<p>这是本课最值得记住的一段。你把 <code>open()</code> 的四个参数组合都试一遍（<code>-fsanitize=address,undefined</code>）：</p>
+
+<table>
+  <thead><tr><th>mode</th><th>inSize</th><th>outSize</th><th>结果</th></tr></thead>
+  <tbody>
+    <tr><td><code>out</code></td><td>0</td><td>16</td><td>正常</td></tr>
+    <tr><td><code>out</code></td><td>0</td><td>4</td><td>正常</td></tr>
+    <tr><td><code>in</code></td><td>16</td><td>0</td><td><strong>attempting double-free</strong></td></tr>
+    <tr><td><code>in | out</code></td><td>16</td><td>16</td><td><strong>attempting double-free</strong></td></tr>
+    <tr><td><code>in | out</code></td><td>0</td><td>4</td><td>正常</td></tr>
+  </tbody>
+</table>
+
+<p>规律是：<strong>只要进方向真的分配了缓冲，就崩</strong>。因为只有这时 <code>inBuffer.buffer_</code> 非空，<code>delete[]</code> 才有东西可删；<code>inSize == 0</code> 时 <code>delete[] nullptr</code> 是合法的空操作，自移动赋值白跑一遍，什么都没坏。</p>
+
+<p>而你的 <code>TCPStream.h:15</code> 是这样写的：</p>
+
+<pre><code>void open(Socket &amp;&amp;socket, std::streamsize outSize)
+{
+    buf_.open(std::move(socket), std::ios::out, 0, outSize);
+}
+</code></pre>
+
+<p>固定 <code>std::ios::out</code>、固定 <code>inSize = 0</code>。所以 <code>client.cpp</code> 跑多少次都是好的。<strong><code>TCPBuf</code> 的两个方向里，进方向从来没有被真正使用过</strong>——不只是没测过，是压根没人写过。</p>
+
+<p>这就是变更放大的反面教材：<strong>这个 bug 不是写错的，是被一个没有调用者的方向保住的。</strong> 三个月后有人想做「双向 TCP 流」，往 <code>open()</code> 里传 <code>std::ios::in</code>，程序会在第一天就 double free，而他会认为是自己的调用方式不对。</p>
+
+<div class="card">
+<h4>编译器本来能帮你</h4>
+<p><code>clang++</code> 对 <code>b = std::move(b);</code> 直接报 <code>-Wself-move</code>：</p>
+<pre><code>mech.cpp:14:34: warning: explicitly moving variable of type 'B'
+to itself [-Wself-move]
+   14 | int main(){ B b(new char[16]); b = std::move(b); }
+      |                                ~ ^           ~
+</code></pre>
+<p>但 <code>g++ 11</code> 不认这个开关（<code>unrecognized command-line option '-Wself-move'</code>），默认也不报。你一直用 g++，所以这行代码在你眼前是安静的。真要防这一类，把 clang 的 <code>-Wall</code> 加进 CI，比靠人眼可靠。</p>
+</div>
+
+<h2><span class="num">22.5</span>反例：只修那一行</h2>
+
+<div class="anti">
+<h4>反例 · 「一行就修好了」</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>// 把 :121 的 inBuffer 改成 inBuffer_
+inBuffer_ = std::move(inBuffer),
+outBuffer_ = std::move(outBuffer);
+
+// 或者更"稳"一点：给 operator= 加自赋值保护
+if (this == &amp;another) return *this;
+</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>两种改法都能让 ASan 闭嘴，但它们只修了症状。<strong>根因是那个类本身</strong>：一个既分配又接管、靠自己记 <code>userManaged_</code> 的模板类，为一条零调用者的路径付了全套代价——手写移动构造、手写移动赋值、手写析构、一个 bool、一个 <code>GetSize()</code>。</p>
+<p>加 <code>if (this == &amp;another)</code> 是在给这份多余的成本再交一笔保险费：这段代码以后每个读者都要问「什么情况下会自赋值」。而更该做的是先问「这个类需要存在吗」。</p>
+</div>
+</div>
+<p>改法不是加检查，<strong>是把整个类删掉，换成 <code>std::vector</code></strong>。所有权、移动、析构、大小，四件事标准库全包了；<code>userManaged_</code> 那条从没走过的路径跟着一起消失。原码 286 行，换完 210 行，<code>UserManagableBuffer</code> 和 <code>userManaged</code> 在文件里各出现 0 次。</p>
+</div>
+
+<pre><code>TCPBuf *open(Socket &amp;&amp;socket, std::ios::openmode mode,
+             std::streamsize inSize, std::streamsize outSize)
+{
+    close();
+    if (mode &amp; std::ios::in)  inBuffer_.resize(inSize);
+    if (mode &amp; std::ios::out) outBuffer_.resize(outSize);
+
+    char_type *ib = inBuffer_.data();
+    setg(ib, ib + inBuffer_.size(), ib + inBuffer_.size());
+    char_type *ob = outBuffer_.data();
+    setp(ob, ob + outBuffer_.size());
+
+    socket_ = std::move(socket);
+    return this;
+}
+</code></pre>
+
+<p>改完的 <code>open()</code> 不再有局部缓冲、不再有移动赋值、不再有可能写错的成员名，因为<strong>没有那个可以写错的地方了</strong>。<code>close()</code> 里原来两行 <code>SetBuffer(nullptr, 0)</code> 变成 <code>inBuffer_.clear(); outBuffer_.clear();</code>，<code>TCPBuf.h:178</code> 的 <code>outBuffer_.GetRawBuffer() == nullptr</code> 变成 <code>outBuffer_.empty()</code>。</p>
+
+<p>实测：真 socket 回环，<code>open / sputn("ping1", 5) / close</code> 走通，server 收到 5 字节，ASan 和 UBSan 全程无输出；连续两次 <code>open()</code> 重开也不炸。</p>
+
+<h2><span class="num">22.6</span>但还有第二个洞</h2>
+
+<p>换完 vector 之后，只跑输出方向是好的。可是把 <code>mode</code> 加上 <code>std::ios::in</code> 再测，<code>sgetn</code> 返回 <strong>0</strong>，一个字节都没读到，而且不报错。</p>
+
+<p>原因不在缓冲，在别处：<code>TCPBuf</code> 根本没有重写 <code>underflow()</code> 和 <code>xsgetn()</code>。grep 一遍就知道：</p>
+
+<pre><code>$ grep -c "underflow\|xsgetn" TCPBuf.h
+0
+$ grep -c "underflow\|xsgetn" example-answer/src/TCPBuf.h
+3
+</code></pre>
+
+<p><code>basic_streambuf</code> 的默认实现是：输入缓冲用完了就返回 <code>eof</code>。<code>open()</code> 里你 <code>setg(ib, ib + n, ib + n)</code>——三个指针都指向末尾，读位置等于读终点，所以第一次读就是「已到尾部」。没有 <code>underflow()</code> 去 <code>recv()</code> 补数据，进方向永远是空的。</p>
+
+<p>这是第 7 课说的一类问题：<strong>接口看起来完整，语义却是半截的</strong>。<code>TCPBuf</code> 暴露了 <code>std::basic_streambuf</code> 的全部能力（读写都继承来了），但只实现了写那一半。调用方没法从类型上看出这一点，只能踩一次。</p>
+
+<div class="excerpt">
+<span class="src">第 16 章 · 每一个改动都引入复杂性</span>
+<p>每一个最小的变化都会引入一些特殊情况、依赖性或其他形式的复杂性。如果你没有使设计变得更好，则可能会使它变得更糟。</p>
+</div>
+
+<p>作者这句话在这里有个很实际的用法：<strong>修 bug 的时候，用「改完之后设计有没有变好」当验收标准。</strong> 只把 <code>inBuffer</code> 加个下划线，设计变差了一点点（多一个读者要理解的自赋值路径）；删掉整个类换 vector，设计明显变好了。同样是「修好了」，一个值得合，一个只是把地雷埋深。</p>
+
+<div class="key">
+<p><strong>一句能贴进评审的话：</strong>「这个类的三条路径里有一条从没被调用过（<code>SetBuffer</code> 传非空指针），却要为它维护手写的移动语义和一个 <code>userManaged_</code>。我建议删掉它，改用 <code>std::vector</code>，286 行能降到 210 行，那个自移动的坑也跟着消失。要不要我先开一个 PR？」</p>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>你来判</h2>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>一个 <code>Buffer</code> 类同时支持「自己 new」和「接管传入的指针」，用 <code>bool owned_</code> 区分。全项目 4 处调用，全部 <code>SetBuffer(nullptr, n)</code>。</p>
+    <div class="opts">
+      <button>过度暴露 + 死路径</button>
+      <button data-ok="1">信息泄漏 + 过度暴露</button>
+      <button>时间分解 + 重复代码</button>
+    </div>
+    <p class="note">「这块内存归谁」这个内部决策被推上了接口，属于信息泄漏；而四条调用点全都走同一条路，说明有两种模式的那个参数是过度暴露。两者叠加的结果就是那个 bool 恒为 false，接管分支成了死代码。<strong>修法不是加断言，是删掉一条路径。</strong></p>
+  </div>
+
+  <div class="row">
+    <p><code>open()</code> 崩溃只在 <code>mode &amp; std::ios::in</code> 且 <code>inSize &gt; 0</code> 时出现；自带的 <code>client.cpp</code> 固定传 <code>out, 0, n</code>，从来没炸过。</p>
+    <div class="opts">
+      <button>测试覆盖不足</button>
+      <button>接口参数过多</button>
+      <button data-ok="1">未走路径掩盖了缺陷</button>
+    </div>
+    <p class="note">三条都沾边，但最准确的命名是第三个：<strong>缺陷被一条零调用者的代码路径藏住了。</strong> 加测试能发现它，但那是在为一条没人需要的路径写测试；更该做的动作是先决定这条路径该不该存在。</p>
+  </div>
+
+  <div class="row">
+    <p>修完 double free，<code>sgetn</code> 仍然返回 0，因为 <code>TCPBuf</code> 没重写 <code>underflow()</code>。你要写进评审的是哪一句？</p>
+    <div class="opts">
+      <button>这里应该加一个 assert</button>
+      <button data-ok="1">进方向只实现了半截</button>
+      <button>这里应该换成异常处理</button>
+    </div>
+    <p class="note">重点不是「有个 bug 要补」，而是「类型的接口比它的实现宽」：读写都从 <code>basic_streambuf</code> 继承了，但只兑现了写。<strong>可选的修法是收窄接口</strong>（只暴露输出流），而不是把输入那半也补齐——除非真的有人需要双向。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>换到你的代码上</h2>
+
+<div class="quiz">
+<p class="q">下面四种「下一步」，哪一种最符合这三件套给出的顺序？</p>
+<button data-why="这是修症状的顺序：先止血，但那份多余的复杂度还在，下一个改动会再咬一次。">先给 operator= 加自赋值检查，再补 underflow()</button>
+<button data-why="清单能记录问题，但四个动作都还是补丁；没有一步在减少模块承担的职责。">先列出四个 bug 开票，再逐个补测试</button>
+<button data-ok="1" data-why="先问这个类该不该存在（删掉它，190 行变 210 行），再决定进方向该不该支持。两问都是「减」，不是「加」。">先问这个类该不该存在，再问进方向要不要支持</button>
+<button data-why="性能不是这里的问题：这段代码根本没跑在热路径上，而且慢不是它此刻的失败方式。">先做性能剖析，按热点重排缓冲的分配顺序</button>
+<p class="feedback"></p>
+</div>
+
+<div class="recall">
+<p>打开你现在手上正维护的一个模块，数三个数：<strong>公开接口有几项</strong>、<strong>其中几项没有调用者</strong>、<strong>有没有一条分支从没被走过</strong>。三个数写下来，一个都不许估。</p>
+<p class="hint-inline">提示：grep 一遍方法名，比读代码快十倍。</p>
+<textarea placeholder="模块：…… ｜ 接口 7 项 ｜ 零调用 2 项（GetSize、带参构造）｜ 死分支：SetBuffer 的接管路径"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p>没有标准答案，但有三个判据能判断你数对了没有：</p>
+<ol>
+  <li><strong>零调用项必须是 grep 出来的，不是想出来的。</strong> 包括 <code>this</code> 内部的隐式调用、宏里的调用、只在注释里出现。用 <code>grep -rn "GetSize(" --include=*.h --include=*.cpp .</code>，看到定义处之外没有命中才算数。</li>
+  <li><strong>死分支要能说出「哪条路径没人走」。</strong> 「<code>if (mode == kSpecial)</code> 里 <code>kSpecial</code> 没有任何调用方传入」合格；「有些分支可能没测」不合格。</li>
+  <li><strong>数完之后必须有一个可以当场做的动作。</strong> 删掉那两项零调用接口，或者把那条死分支对应的参数从签名里去掉。如果三个数都数完了却动不了手，说明它们都被人依赖着——那也是个结论，但和你以为的不一样。</li>
+</ol>
+<p>这段代码的三行答案长这样，可以照抄格式：</p>
+<ul>
+  <li>模块：<code>example/src/TCPBuf.h</code>（286 行）</li>
+  <li>接口 5 项，零调用 2 项：<code>GetSize()</code>、<code>UserManagableBuffer(std::streamsize)</code></li>
+  <li>死分支：<code>SetBuffer</code> 的接管路径（<code>s != nullptr</code>），全仓 4 处调用都是 <code>nullptr</code></li>
+</ul>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>这一课真正留下的东西</h2>
+
+<p>三件套走完，你会发现抓住 bug 的不是「读代码读得仔细」。是三个可以数的问题：<strong>接口几项、其中几项没人调、哪条分支没人走。</strong> 数完，那个 double free 就自己浮出来了，因为它在一条没人走的路上。</p>
+
+<p>第 21 课说这本书的用法是「挑你这周本来就要改的地方重新看一遍」。这一课就是把那句话做出来了一次。你现在可以对自己的仓库做同样的事，一次一个文件。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://isocpp.github.io/CppCoreGuidelines/CppCoreGuidelines#c65-make-move-assignment-safe-for-self-assignment">C++ Core Guidelines · C.65</a> — 移动赋值必须对自赋值安全。本课 22.4 的正规条文，含标准写法。</p>
+  <p><a href="https://en.cppreference.com/w/cpp/io/basic_streambuf/underflow">cppreference · basic_streambuf::underflow</a> — 读懂它就明白为什么 <code>sgetn</code> 在没重写时返回 0。</p>
+  <p><a href="https://clang.llvm.org/docs/AddressSanitizer.html">AddressSanitizer 文档</a> — 安装与选项。<code>-fsanitize=address,undefined</code> 这一条就够抓这一类问题。</p>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch05.html">第 5 章 信息隐藏（中文全译）</a> — 后门泄漏那一节值得对着 <code>SetBuffer</code> 的签名再读一遍。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">把你要审的那段代码贴进来——文件路径加关键几十行就行。我们一起数那三个数，然后把它写成一句能贴进 MR 的话。你要是愿意，我也可以直接把改造后的版本写出来给你对比行数。</p>
+
+  <div class="nav-links">
+    <span><a href="0021-conclusion.html">← L21 · 结论</a></span>
+    <span><a href="../reference/book-cheatsheet.html">全书速查 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

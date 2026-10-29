@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L18 · 代码应该是显而易见的 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 18 章 · 课程 18 / 21</p>
+
+<h1>代码应该是显而易见的</h1>
+<p class="standfirst">「显而易见」不是「简单」，也不是「我写的时候觉得清楚」。它是一个可验证的标准：<strong>读者不假思索的第一次猜测就是对的</strong>。做不到的时候，说明有某条重要信息只存在于你的脑子里——这一章讲怎么把它搬到代码里。</p>
+
+<h2><span class="num">18.1</span>判定权在读者手上</h2>
+
+<p>第 2 章把复杂性的两个来源定为「依赖」和「晦涩」。前面十几章都在处理依赖；这一章处理晦涩——那个更气人的来源，因为依赖至少能在图上画出来，而晦涩只能靠读。</p>
+
+<div class="excerpt">
+<span class="src">第 18 章 · 显而易见与晦涩</span>
+<p>如果代码是显而易见的，就意味着某人可以不加思索地快速阅读它：他对代码行为的第一次猜测就是正确的，他不需要花太多时间和精力去收集使用这段代码所需的信息。如果代码不明显，读者就得花大量时间精力去理解它。这不仅降低效率，还会<strong>增加误解和出错的可能性</strong>。显而易见的代码比不明显的代码需要的注释更少。</p>
+<p>「显而易见」由读者来判断。注意到别人代码里的不明显，比注意到自己代码里的问题要容易得多。所以判断代码是否显而易见的最好方法是代码评审：<strong>如果读你代码的人说它不明显，那它就不明显，无论它对你来说多么清晰。</strong></p>
+</div>
+
+<p>这段话里有两处对工程实践的直接推论，很多团队都没做到：</p>
+
+<ul>
+  <li><strong>「不明显」是一个有效结论，不需要额外论证。</strong>作者不能说「你不熟这套抽象」。如果你的评审者读完第一遍猜错了行为，那就是这条信息没在代码里，和他聪不聪明无关。</li>
+  <li><strong>「我觉得挺清楚」不是论据。</strong>作者对自己代码的清晰感来自<em>写过它的记忆</em>，而这份记忆恰恰是读者没有的东西。所以作者的自评在这个维度上系统性偏乐观。</li>
+</ul>
+
+<p>对你那三个痛点来说，本章的落点最直接的是<strong>②代码评审说不出所以然</strong>：「不明显」给了你一个不需要争论技术优劣的评审结论——它不是「我更喜欢另一种写法」，而是「我读完猜错了行为，这是可复现的事实」。而它同时缓解①和③：晦涩正是「改一处怕漏」的成因（你不知道改这里会影响什么），也是「越拆越乱」的成因（拆完之后没人能跨模块推断）。</p>
+
+<h2><span class="num">18.2</span>三种手段：让读者拥有全部信息</h2>
+
+<p>书末把手段收敛成一个信息视角，这是全章最有用的一段，值得当作检查表用：</p>
+
+<div class="excerpt">
+<span class="src">第 18 章 · 结论：从信息的角度看显而易见</span>
+<p>关于显而易见性的另一种思考方式是信息。如果代码不是显而易见的，通常意味着存在一些关于代码的重要信息，而读者并不具备：在前面的例子中，读者不知道构造函数会创建新线程；在通用容器的例子里，读者不知道打包返回的各个元素分别表示什么。</p>
+<p>要让代码显而易见，必须确保读者始终拥有理解它所需的信息。你可以用三种方式做到这一点。<strong>最好的方法是使用抽象等设计技术并消除特殊情况，从而减少所需的信息量。</strong>其次，<strong>你可以利用读者已经从别处获得的信息</strong>——比如遵循约定、符合期望——这样他不必为你的代码再学一遍新东西。第三，<strong>你可以用好名字和战略性注释这样的技术，在代码里把重要信息交给他。</strong></p>
+</div>
+
+<p>注意这三条的排序是<strong>按优劣排的</strong>，而这个顺序反直觉：多数人第一反应是"加注释"，但它在书里排第三。原因很简单——</p>
+
+<table>
+  <thead><tr><th>手段</th><th>它做了什么</th><th>成本由谁承担</th><th>失效方式</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>① 消除特殊情况</td>
+      <td>减少需要知道的信息<em>总量</em></td>
+      <td>作者一次性，之后所有人免费</td>
+      <td>几乎不失效</td>
+    </tr>
+    <tr>
+      <td>② 利用读者已有信息</td>
+      <td>不增加新信息，复用旧的</td>
+      <td>作者一次性（查一下仓库现成写法）</td>
+      <td>约定本身腐烂后失效</td>
+    </tr>
+    <tr>
+      <td>③ 名字与注释</td>
+      <td>把信息<em>写下来</em></td>
+      <td>作者持续维护</td>
+      <td>会过期、会跑偏、会没人读</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>所以正确的动作顺序是：<strong>先问「这条信息能不能不存在」（①），再问「读者是不是已经知道了」（②），最后才问「怎么写下来」（③）。</strong>大部分代码评审里我们直接从③开始，于是注释越写越多，而晦涩一点没减。</p>
+
+<h2><span class="num">18.3</span>手段③的两个高性价比动作：空白与注释</h2>
+
+<p>书里给的第一个技巧便宜得让人意外：<strong>空白</strong>。它举的例子是参数文档——所有行挤在一起时，你甚至看不出有几个参数；一旦每个 <code>@param</code> 后换行、段间留空，结构立刻跳出来。</p>
+
+<p>代码里同理。原文给了一个 C++ 例子（书里少见的 C++ 主场），长这样：</p>
+
+<pre><code>void* Buffer::allocAux(size_t numBytes) {
+  // Round up the length to a multiple of 8 bytes, to ensure alignment.
+  uint32_t numBytes32 = (downCast&lt;uint32_t&gt;(numBytes) + 7) &amp; ~0x7;
+  assert(numBytes32 != 0);
+
+  // If there is enough memory at firstAvailable, use that. Work down
+  // from the top, because this memory is guaranteed to be aligned
+  // (memory at the bottom may have been used for variable-size chunks).
+  if (availableLength &gt;= numBytes32) {
+    availableLength -= numBytes32;
+    return firstAvailable + availableLength;
+  }
+
+  // Next, see if there is extra space at the end of the last chunk.
+  if (extraAppendBytes &gt;= numBytes32) {
+    extraAppendBytes -= numBytes32;
+    return lastChunk-&gt;data + lastChunk-&gt;length + extraAppendBytes;
+  }
+
+  // Must create a new space allocation; allocate space within it.
+  uint32_t allocatedLength;
+  firstAvailable = getNewAllocation(numBytes32, &amp;allocatedLength);
+  availableLength = allocatedLength - numBytes32;
+  return firstAvailable + availableLength;
+}</code></pre>
+
+<p>这个例子的精妙之处不在空白本身，而在书里点出的那条规律：<strong>每一段空行之后的第一行是一条描述下一个代码块的注释。</strong>于是空行变成了视觉索引——你的眼睛可以不读代码就从注释扫到「对齐 → 栈顶分配 → 尾部剩余 → 新分配」这四个阶段。这不是装饰，它把「这个函数在做什么」的信息从"读完全文"降到了"扫四个句子"。</p>
+
+<p>你可以马上在自己代码里试的判据：<strong>一个超过 20 行的函数，如果加空行时你找不到"这里该断"的位置，说明它其实没有一个清晰的分段结构——那问题不在空白，在函数太长或职责不单一。</strong></p>
+
+<p>第二个动作是注释，但书里的定位很克制：<strong>注释不是为了"补充说明"，而是为了"弥补缺失的信息"</strong>。而最常见的缺失信息是——<em>这个函数什么时候被调用</em>。这个坑在事件驱动代码里几乎是必踩的，见 18.4。</p>
+
+<h2><span class="num">18.4</span>反例：控制流被藏起来（事件驱动与回调）</h2>
+
+<p>书里明确说了：事件驱动编程<em>有时是有用的，你最终会用到它</em>。所以问题不是消灭它，而是承认它天然晦涩，然后补偿。</p>
+
+<div class="excerpt">
+<span class="src">第 18 章 · 使代码不明显的东西</span>
+<p>事件驱动编程让控制流很难跟踪。事件处理函数从来不会被直接调用；它们由事件模块间接调用，通常是通过函数指针或接口。<strong>即使你在事件模块里找到了调用点，你仍然无法确定哪个具体的函数会被调用：这取决于运行时注册了哪些处理器。</strong>因此事件驱动的代码很难推理，也很难说服自己相信它是对的。</p>
+<p>为了弥补这种晦涩，用每个处理函数的接口注释说明它<em>何时</em>被调用。</p>
+</div>
+
+<div class="anti">
+<h4>反例：三个回调，零个「何时」</h4>
+<div class="pair">
+<div><b>这样写</b>
+<pre><code>class Conn : public RefCounted {
+public:
+  void on_readable();
+  void on_writable();
+  void on_error(int err);
+};
+
+// 调用点（在别处，读者看不到）
+loop_-&gt;watch(fd_, EPOLLIN,  [this]{ on_readable(); });
+loop_-&gt;watch(fd_, EPOLLOUT, [this]{ on_writable(); });
+loop_-&gt;watch(fd_, EPOLLERR, [this, e]{ on_error(e); });</code></pre>
+</div>
+<div><b>为什么烂</b>
+<p>① <strong>读者无法确定线程。</strong><code>on_readable</code> 在事件循环线程跑，但它在 <code>Conn</code> 的哪个接口里也是这个线程？不知道。</p>
+<p>② <strong>读者无法确定状态。</strong>它被调用时 <code>Conn</code> 一定处于已连接状态吗？会不会在 <code>close()</code> 之后还来一次？不知道。</p>
+<p>③ <strong>读者无法确定次数。</strong>EPOLLIN 是水平触发还是边缘触发？如果是水平触发，而 <code>on_readable</code> 没把数据读完，它会被反复调用——这条决定性能与正确性的信息，只存在于注册该 fd 的那一行。</p>
+<p>④ <strong>排查时最痛：</strong>崩溃栈里出现 <code>Conn::on_readable</code>，往上翻是 <code>epoll_wait</code>。你无法从任何地方看出是谁注册的、为什么注册。这就是「改一处怕漏」的极端形态——<em>你根本不知道有几个调用方</em>。</p>
+</div>
+</div>
+<p>改法不是删掉回调（事件驱动在这里是对的），而是<strong>把"何时"写进每个处理函数自己的契约里，并且顺手把线程和触发语义也写掉</strong>：</p>
+<pre><code>class Conn : public RefCounted {
+public:
+  // 在事件循环线程上、由 transport 在 fd 可读时调用。
+  // 仅当 state_ == kConnected 时调用；close() 之后不会再调用。
+  // 边缘触发：每次调用必须读到 EAGAIN，否则后续数据可能不再唤醒。
+  void on_readable();
+
+  // 同上线程与生命周期约束。可写时调用一次，之后需重新 watch。
+  void on_writable();
+
+  // 传输层错误或对端 RST 时调用，err 为 errno 值。
+  // 调用后本对象进入 kClosed，之后 on_readable 不再触发。
+  void on_error(int err);
+};</code></pre>
+<p>四行注释换掉的是读者三次跨文件跳转。<strong>注意这四行没有一句在描述"这个函数做什么"——那部分代码自己会说。它们全部在描述代码说不出来的东西：何时、在哪个线程、以及生命周期边界。</strong>这就是 18.2 里"弥补缺失信息"的具体含义。</p>
+</div>
+
+<h2><span class="num">18.5</span>反例：通用容器与「声明≠实际」</h2>
+
+<p>书里点了两种特别隐蔽的不明显，它们在 C/C++/Rust 里有精确的对应物。</p>
+
+<p><strong>第一种：通用容器。</strong>原书用 <code>Pair</code> 举例：两个访问方法只能按「键 / 值」这种通用角色取名，这两个名字不携带任何含义。<code>std::pair</code> / <code>std::tuple</code> 完全一样：<code>r.first</code> 是 term 还是 vote？<code>r.second</code> 是 true 表示成功还是失败？</p>
+
+<pre><code>// 晦涩：first/second 没有含义
+std::pair&lt;int, bool&gt; vote(uint64_t term, bool granted);
+auto r = vote(t, true);
+if (r.second) { /* 是成功？是投票已授予？ */ }
+
+// 清晰：给每个字段一个名字
+struct VoteResult {
+  uint64_t term;      // 这次投票所属的任期
+  bool     granted;   // 是否获得多数派同意
+};
+VoteResult vote(uint64_t term, bool granted);</code></pre>
+
+<p>书里从这个例子提炼出一条通用规则，我认为是全章最该背下来的一句：<strong>软件的设计应该使它易于阅读，而不是易于编写。</strong>「易写」的收益归作者、只拿一次；「易读」的成本由之后每一个读者反复支付。通用容器是典型的易写难读。</p>
+
+<p><strong>第二种：声明类型与实际类型不一致。</strong>原书的例子是把变量声明成接口类型、实际赋给它某个具体实现的实例——两个类型在性能与线程安全性上并不相同，于是「只读到声明」和「看到构造」的读者会得出不同结论。C++ 里对应的经典形态是<strong>声明成基类、实际是派生类，然后读者只能按基类推断</strong>：</p>
+
+<pre><code>// 晦涩：头文件里只看到 Sink，读者会假设通用语义
+class Sink { public: virtual void write(std::span&lt;const std::byte&gt;) = 0; };
+std::unique_ptr&lt;Sink&gt; out_;
+
+// 实际构造（在 .cpp 深处）
+out_ = std::make_unique&lt;AsyncSink&gt;(8 &lt;&lt; 20);   // 内部有 8MB 队列，可能丢数据
+
+// 清晰：差异足够大，就该让它在声明处可见
+class AsyncSink final : public Sink {
+ public:
+  // 非阻塞：入队后立即返回；队列满时丢弃并按 drop_count() 计数。
+  // 不保证跨线程顺序；flush() 是唯一能等待排空的方法。
+  void write(std::span&lt;const std::byte&gt;) override;
+};
+std::unique_ptr&lt;AsyncSink&gt; out_;   // 声明即事实</code></pre>
+
+<p>Rust 里有个更常见的版本：<code>fn f() -&gt; impl Iterator&lt;Item = u8&gt;</code> 让调用者看不到具体类型，但如果这个类型有重要的 <code>Clone</code> / <code>Send</code> / 大小性质，返回 <code>impl Trait</code> 就把它们藏了。<strong>判据是：当"实际类型"携带读者必须知道的语义时（阻塞性、线程安全、所有权、复杂度），不要让声明说谎。</strong></p>
+
+<p>书里第三个例子是「违反读者期望」：一个 <code>RaftClient</code> 的构造函数起了后台线程，于是 <code>main()</code> 返回了程序却没退出。读者按通用惯例以为「main 返回 = 进程结束」，而这里不是。C++ 里对应的写法很多：构造函数里起线程、构造函数里做阻塞 I/O、析构函数里 join（于是析构可能卡住几百毫秒）、<code>operator=</code> 里做深拷贝（于是看似 O(1) 的赋值变成 O(n)）。<strong>这些都不该靠"记住了"来传播，要么改掉，要么在声明处写清。</strong></p>
+
+<h2><span class="num">18.6</span>用空白和边界把长度压下去</h2>
+
+<p>回到 18.3。空白那条技巧真正的用途不只是好看，它能<strong>暴露出多余的分支</strong>。做法很土但有效：给函数里的每一段之间加空行、每段顶上加一句注释。如果你发现某一段的注释写不出来，或者写出来是「处理特殊情况」——那一段就是 18.2 手段①要消灭的对象。</p>
+
+<pre><code>// 改前：一段到底，读者不知道有几种情况
+int parse_header(const uint8_t* p, size_t n, Header* out) {
+  if (n &lt; 4) return -1;
+  uint16_t len = p[0] | (p[1] &lt;&lt; 8);
+  if (len &gt; n - 4) return -1;
+  if (p[2] == 0xFF) { /* 扩展头 */ ... }
+  out-&gt;len = len; memcpy(out-&gt;type, p + 4, 2);
+  return 0;
+}</code></pre>
+
+<p>加上空白之后，那段「扩展头」立刻显形为一个<strong>只有一种输入会走的特殊路径</strong>，而它同时改了长度语义——这就是典型的"特殊情况导致的信息爆炸"。改法是把它挪出去，让主路径没有分支：</p>
+
+<pre><code>// 改后：主路径无分支；扩展头是独立的解析阶段
+// 返回 0 成功；-1 数据不足或非法。-1 时 *consumed 无效。
+int parse_header(const uint8_t* p, size_t n, Header* out, size_t* consumed) {
+  constexpr size_t kFixed = 4;
+  if (n &lt; kFixed) return -1;
+
+  const uint16_t len = p[0] | (p[1] &lt;&lt; 8);
+  const size_t total = kFixed + len;
+  if (total &gt; n) return -1;
+
+  // 主路径：固定头 + 载荷，不含任何可选字段
+  out-&gt;len = len;
+  std::memcpy(out-&gt;type, p + 4, 2);
+  *consumed = total;
+
+  // 扩展头：类型 0xFF 时紧跟在载荷之后，由调用方决定是否解析
+  out-&gt;has_ext = (out-&gt;type[0] == 0xFF);
+  return 0;
+}</code></pre>
+
+<p>信息量从「长度有两种算法」降成了「长度有一种算法，外加一个布尔标记」。<strong>这就是手段①：不是把特殊情况写得更清楚，是让它不存在。</strong></p>
+
+<hr>
+
+<h2><span class="num">练习</span>猜一猜，还是查一查</h2>
+
+<p>五个片段。判断：读者能不能靠快速阅读得到正确猜测？还是必须跳去别处查？</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p><code>Status write(const void* buf, size_t n);</code> 的接口注释只有一句「写入数据」。</p>
+    <div class="opts">
+      <button data-ok="1">必须去查</button>
+      <button>能直接猜对</button>
+    </div>
+    <p class="note">四个关键信息全缺：是否阻塞、部分写入怎么表示、失败后 buf 是否已被消费、能否在非所属线程调用。任何一条猜错都会产生线上 bug——尤其"部分写入"这条，几乎所有人都踩过。<strong>签名里的 <code>size_t n</code> 会诱导读者假设"要么全写要么失败"，而 POSIX 从不保证这一点。</strong></p>
+  </div>
+
+  <div class="row">
+    <p>一个 40 行的函数被空行分成四段，每段第一行是一条注释：校验参数 / 计算布局 / 写入 / 更新统计。</p>
+    <div class="opts">
+      <button data-ok="1">能直接猜对</button>
+      <button>必须去查</button>
+    </div>
+    <p class="note">这就是 18.3 那条规律的正面例子：空行 + 段首注释构成了视觉索引，读者扫四行就知道函数在做什么，不必读 40 行。注意它同时说明一件事——<strong>这个函数确实有四个阶段，所以它配得上这四段。</strong>如果你的函数加不出这样的分段，那是结构问题，不是排版问题。</p>
+  </div>
+
+  <div class="row">
+    <p><code>auto [a, b] = parse(cfg);</code>，<code>parse</code> 返回 <code>std::pair&lt;size_t, bool&gt;</code>。</p>
+    <div class="opts">
+      <button>能直接猜对</button>
+      <button data-ok="1">必须去查</button>
+    </div>
+    <p class="note">结构化绑定让代码<em>看起来</em>很现代，但 <code>a</code> 和 <code>b</code> 的含义完全取决于 <code>parse</code> 的定义——读者必须跳过去看 <code>first</code>/<code>second</code> 各是什么。这是 18.5 的通用容器问题在 C++17 语法下的新皮肤：<strong>语法糖不改变"名字没有含义"这个事实。</strong>换成 <code>struct ParseResult { size_t consumed; bool complete; };</code> 后，<code>auto [consumed, complete] = parse(cfg);</code> 才真正自解释。</p>
+  </div>
+
+  <div class="row">
+    <p>构造函数 <code>Cache(size_t capacity)</code> 内部起了一个后台线程做 LRU 淘汰，析构时 join。</p>
+    <div class="opts">
+      <button data-ok="1">必须去查</button>
+      <button>能直接猜对</button>
+    </div>
+    <p class="note">这是 18.5 第三个例子的 C++ 版本，违反三条读者期望：①"构造不阻塞"——它可能起线程失败抛异常；②"析构很快"——join 可能等一次完整淘汰周期；③"我可以随便拷贝"——有线程的对象通常不可拷贝。三条都不在签名里。<strong>构造/析构里藏行为是 C++ 晦涩的头号来源</strong>，因为它把读者对"对象创建是廉价的"这一默认前提悄悄推翻了。</p>
+  </div>
+
+  <div class="row">
+    <p>同一个仓库里，<code>read</code> 有三个版本：<code>read(fd, buf, n)</code>、<code>read_all(...)</code>、<code>read_exact(...)</code>，且都遵守「返回读到的字节数，0 表示 EOF」。</p>
+    <div class="opts">
+      <button>必须去查</button>
+      <button data-ok="1">能直接猜对</button>
+    </div>
+    <p class="note">三个名字都自解释（一次 / 读满为止 / 读不满就报错），而且失败语义统一——这是 17 章一致性 + 18 章命名的合力：<strong>读者学会第一个，就自动学会另外两个。</strong>这类一致性是最便宜的"显而易见"，因为它不需要任何注释。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>给一个晦涩的接口补上缺失的信息</h2>
+
+<div class="recall">
+<p>下面是某代码库里一个真实形状的接口（名字已改）。它当前没有接口注释。</p>
+<pre><code>class FrameQueue {
+ public:
+  explicit FrameQueue(size_t maxFrames);
+  ~FrameQueue();
+  bool push(Frame&amp;&amp; f);          // ？
+  std::optional&lt;Frame&gt; pop();    // ？
+  void close();                  // ？
+};</code></pre>
+<p>用 18.2 的三种手段按顺序分析：哪些信息可以<strong>不存在</strong>（改签名/结构）？哪些可以靠<strong>约定</strong>？剩下的哪些必须写成注释？</p>
+<textarea placeholder="① 可以消灭的信息：… ② 靠约定/命名承载的：… ③ 必须写进注释的：…"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p><strong>① 能消灭的信息（优先）：</strong></p>
+<ul>
+  <li><code>bool push()</code> 返回 <code>bool</code> 是模糊的——false 是"队列满"还是"队列已关闭"？这是两个完全不同的调用方决策（等一会儿再来 vs 立刻放弃）。用 <code>enum class PushResult { Ok, Full, Closed };</code> 让这条信息不必写、也不可猜错。这是手段①：把"取决于你是哪种失败"这个特殊情况消掉。</li>
+  <li><code>explicit FrameQueue(size_t maxFrames)</code> 里的 <code>size_t</code> 是帧数还是字节数？用 <code>FrameCount</code> / <code>Bytes</code> 这类强类型（或至少把参数名写进声明处）让单位问题不存在。</li>
+  <li><code>std::optional&lt;Frame&gt; pop()</code> 空返回有两个含义（空队列 / 已关闭），同样改为 <code>enum class PopResult { Frame, Empty, Closed }</code>。注意这是本章与第 10 章（把错误定义得不必要）的交汇点：<strong>两个语义挤进一个返回值，是"不明显"最常见的机械成因。</strong></li>
+</ul>
+<p><strong>② 靠约定承载的：</strong></p>
+<ul>
+  <li>「<code>push</code> 移动语义吃进 <code>Frame</code>」——<code>Frame&amp;&amp;</code> 已经说了，不用注释。</li>
+  <li>「队列是有界的、满了不阻塞」——如果整个仓库的队列都是这个语义，靠一致性即可；否则必须写。判断方法：<em>随便翻两个别的 Queue，它们也是这么做的吗？</em></li>
+</ul>
+<p><strong>③ 必须写成注释的</strong>（这些是代码永远说不出来的）：</p>
+<pre><code>class FrameQueue {
+ public:
+  // 创建队列，最多缓存 maxFrames 帧。不分配帧内存，不启动线程。
+  explicit FrameQueue(FrameCount max_frames);
+
+  // 析构时若仍有未取走的帧，直接丢弃（不回调、不记录）。
+  ~FrameQueue();
+
+  // 线程安全：push/pop/close 可从任意线程调用。
+  // 非阻塞：队列满时立即返回 kFull，不等待。
+  PushResult push(Frame&amp;&amp; f);
+
+  // 非阻塞：队列空时立即返回 kEmpty。
+  // close() 之后返回 kClosed，且不再返回已缓存的帧。
+  PopResult pop();
+
+  // 幂等；可从任意线程调用。不等待消费者。
+  void close();
+};</code></pre>
+<p><strong>这份答案的重点不是那五行注释，而是①里那两处签名改动。</strong>如果只做③（把现状原样写下来），你其实是在给一个晦涩的设计做文档——注释会很长，而且每加一个状态就要改一遍。先做①，注释自然短：剩下的全是不写在代码里就无处可写的东西（线程安全、阻塞性、析构行为）。</p>
+<p>这也解释了为什么书里把"消除特殊情况"排在手段第一位：<strong>它不是更好的文档，它是更少的文档。</strong></p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>一句话评审</h2>
+
+<div class="key">
+<p><strong>能直接贴进 MR 的话：</strong>「这个回调注册在 <code>Conn::start()</code> 里，但 <code>on_readable()</code> / <code>on_error()</code> 的声明处没有任何"何时被调用"的说明——线程、生命周期边界、以及边缘触发下必须读到 EAGAIN 这三条，现在只能靠翻到注册点才能知道。我读完猜了两次都猜错（以为 <code>close()</code> 之后不会再回调，实际会）。建议按 18.4 的做法给三个处理函数各加两三行注释：何时调用、在哪个线程、什么状态下不会调用。如果这几条其实还没确定，那更该先定下来——它们是这个类的契约，不是实现细节。」</p>
+</div>
+
+<p>这句话的结构值得复用：<strong>指出信息缺失的位置 → 列出具体缺了哪几条 → 给一个可复现的证据（"我猜错了两次"）→ 给一个成本很低的动作（两三行注释）→ 留一个反向出口（"如果还没确定，那更该先定"）。</strong>那个"我猜错了"的证据是关键的：它把主观的"我觉得不清楚"变成了客观的"这份代码没能传达信息"，作者没法用"你不熟"来反驳。</p>
+
+<p>最后一件事：这一章和前面两章合起来，构成一套在别人代码上干活的完整动作。</p>
+
+<ul>
+  <li><strong>L16 决定要不要改：</strong>改的规模看设计收益，不看 diff 行数；先写注释再写代码；不顺势把代码库拉低。</li>
+  <li><strong>L17 决定怎么改：</strong>跟随既有约定，除非有新信息且愿意全量迁移；把约定变成拦得住的工具。</li>
+  <li><strong>L18 决定改完能不能被读懂：</strong>先减信息量，再复用读者已知，最后才写注释；判定权交给评审者。</li>
+</ul>
+
+<p>三章其实是同一个动作的三个阶段，而它们共同的敌人是同一句话：<em>「反正我自己看得懂。」</em></p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch18.html">第 18 章 代码应该是显而易见的（中文全译）</a> — 原文末段那段"从信息角度看显而易见"的三条手段值得反复读；本章的 <code>allocAux</code> 例子也是全书为数不多的 C++ 主场，建议对照原文看完整版。</p>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch14.html">第 14 章 选择的名字</a> 与 <a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch17.html">第 17 章 一致性</a> — 书里明说这两章讲的是"使代码显而易见的两种最重要的技术"，本章的其余手段都是补充。如果只读一章，读那两章。</p>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch02.html">第 2 章 复杂性的本质</a> — 晦涩（obscurity）作为复杂性两大来源之一的原始定义在这里。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">贴一段你最近读了三遍才看懂的代码——自己写的也行（这章说了，看自己的代码最容易失明）。我们按三种手段过一遍：哪些信息其实可以不存在？哪些可以靠约定？剩下真正非写不可的，到底该写在哪一行。多数情况会发现，需要写的比你以为的少，需要改的签名比你以为的多。</p>
+
+  <div class="nav-links">
+    <span><a href="0017-consistency.html">← L17 · 一致性</a></span>
+    <span><a href="0019-trends.html">L19 · 设计趋势 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

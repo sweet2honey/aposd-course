@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L11 · 设计两次 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 11 章 · 课程 11 / 21</p>
+
+<h1>设计两次</h1>
+<p class="standfirst">你对一个接口的第一个想法，几乎一定不是最好的那个。好消息是：再想一个只需要两小时，而实现它要两周。这一章讲的就是怎么花掉那两小时，以及怎么在评审里把「我觉得还能更好」说成一句别人无法反驳的话。</p>
+
+<h2><span class="num">11.1</span>一个几乎免费的动作</h2>
+
+<p>先把这个原则的原始表述放在这里。它短得不像一条方法论：</p>
+
+<blockquote>
+<p>设计软件非常困难，因此你对如何构造<a class="gl" href="../reference/glossary.html#module">模块</a><span class="en-inl">module</span>或系统的初步思考不太可能会产生最佳的设计。如果为每个主要设计决策考虑多个选项，最终会得到更好的结果：<a class="gl" href="../reference/glossary.html#design-it-twice">设计两次</a><span class="en-inl">design it twice</span>。</p>
+<cite>第 11 章 · 设计两次</cite>
+</blockquote>
+
+<p>它说的不是「想得更久」，而是「想<strong>第二个</strong>」。这两件事完全不同。盯着第一个方案反复打磨，你只会把它磨得更精致，不会发现它方向错了。有价值的动作是<strong>画出一个与它根本不同的方案</strong>，然后把两个摆在一起看。</p>
+
+<p>「根本不同」是关键词。如果你写的是 <code>read(off, dst, n)</code>，第二个方案写成 <code>read(off, dst, n, flags)</code>，那不是设计两次，那是同一个设计加了个参数。你什么都没学到。</p>
+
+<div class="excerpt">
+<span class="src">第 11 章 · 成本核算</span>
+<p>设计两次不需要花费很多额外时间。对于较小的模块，比如一个类，你可能只需要一两个小时斟酌不同的方案；而实现这个类要花几天甚至几周。初步的设计尝试可能带来明显更好的设计，收益远超你在设计两次上的花销。模块越大，你花在初始设计探索上的时间越多，但实现同样更久，好设计带来的好处也更大。</p>
+</div>
+
+<p>换算成你的时间：一个接口想两个版本，成本是<strong>一下午</strong>；一个接口选错的成本是<strong>之后每次改动都要绕它走</strong>，也就是第 2 章的<a class="gl" href="../reference/glossary.html#change-amplification">变更放大</a><span class="en-inl">change amplification</span>，一直付到这段代码被删掉为止。这笔账不需要精算。</p>
+
+<h2><span class="num">11.2</span>练手：一个文本缓冲的三种接口</h2>
+
+<p>书里的例子是编辑器的文本类。我们换成 C++，因为它正好对应你写过的东西：一块可变的字节/字符存储，加上偏移量。假设你要给编辑器内核提供一个 <code>Text</code>，第一步是定接口，<em>先不要想内部用什么结构</em>。</p>
+
+<p><strong>方案 A：面向行。</strong>把文本看成行的序列。</p>
+
+<pre><code>class Text {
+public:
+    void insert_line(size_t line, std::string_view s);
+    void erase_line(size_t line);
+    std::string line(size_t line) const;
+    size_t line_count() const;
+};</code></pre>
+
+<p><strong>方案 B：面向单字符。</strong>把文本看成字符序列，一次一个。</p>
+
+<pre><code>class Text {
+public:
+    void insert(size_t pos, char c);
+    void erase(size_t pos);
+    char at(size_t pos) const;
+    size_t size() const;
+};</code></pre>
+
+<p><strong>方案 C：面向范围。</strong>一次操作一段任意长度的字符串，允许跨行。</p>
+
+<pre><code>class Text {
+public:
+    void insert(size_t pos, std::string_view s);
+    void erase(size_t pos, size_t len);
+    std::string_view view(size_t pos, size_t len) const;
+    size_t size() const;
+};</code></pre>
+
+<p>三个接口都「能用」，而且都很短。差别全在<strong>谁来做剩下的事</strong>：</p>
+
+<table>
+  <thead><tr><th>接口</th><th>上层还得自己做什么</th><th>典型代价</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>A · 行</td>
+      <td>剪切/粘贴选区时要拆行、拼行；跨行删除要循环删行</td>
+      <td>行边界知识泄漏到上层：换行符算不算行的一部分，上层也得知道</td>
+    </tr>
+    <tr>
+      <td>B · 字符</td>
+      <td>粘贴 10KB 要循环 10240 次；每次调用都可能触发一次位置查找</td>
+      <td>每次调用一次函数边界，性能敏感场景直接出局</td>
+    </tr>
+    <tr>
+      <td>C · 范围</td>
+      <td>几乎不用做什么，操作和上层动作一一对应</td>
+      <td>接口略复杂：要定义 <code>pos + len</code> 越界时的语义（第 10 章）</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>结论不是「C 最好，记住 C」。结论是：<em>只有当三个方案并排放着的时候，你才看得见 A 和 B 各自把什么工作推给了调用方。</em>单独看 C，你只会觉得它「有点复杂」，然后退回去写 B。</p>
+
+<div class="excerpt">
+<span class="src">第 11 章 · 从备选到更好的第三个</span>
+<p>有时所有备选设计都没有特别的吸引力。这时看看能否提出别的方案，用你在备选里发现的问题去推动新设计。如果你只考虑了面向行和面向字符两种，你可能会注意到两者都有点笨拙，因为都需要上层软件去做别的文本操作——这是一个危险信号：如果真要有这样一个文本类，它应该处理所有文本操作。于是接口需要更贴近上层实际发生的操作，而那些操作既不对应单个字符，也不对应一行。这个推理会把你推向范围接口。</p>
+</div>
+
+<p>这一段是整章最有用的动作：<strong>把备选方案的缺点列出来，如果两个方案有同一个缺点，那个缺点不是「选得不好」，而是需求本身没被满足。</strong>你会得到第三个方案，而它比原来两个都好。</p>
+
+<h2><span class="num">11.3</span>比较的四个轴，排第一的那个不是性能</h2>
+
+<p>书里给的排序值得照抄：</p>
+
+<ol>
+  <li><strong>易用性</strong>——用这个接口的上层软件，需要额外做多少工作。这一条压倒其他所有条。</li>
+  <li><strong>简单性</strong>——接口本身是否比另一个更简单。</li>
+  <li><strong>通用性</strong>——能否覆盖更多使用场景，而不是为每个场景加一个方法。</li>
+  <li><strong>性能</strong>——实现的效率。</li>
+</ol>
+
+<p>为什么性能排最后？因为第 4 章那条结论：接口<a class="gl" href="../reference/glossary.html#complexity">复杂性</a><span class="en-inl">complexity</span>是<strong>每个调用方都要付</strong>的税，而实现性能是可以后来单点优化的。接口一旦被一百处调用，改它就要改一百处，这就是痛点①「改一个需求要动好几处」。所以：<strong>先把接口做对，再让实现变快。</strong></p>
+
+<p>但性能也不能不看。方案 B 的问题不在于「多循环几次很难看」，而在于每次调用都是一次真实的函数调用与边界检查。在每字符 1ns 量级的路径上，这是 10 倍差距。所以对比时要问：这个接口的<strong>调用粒度</strong>和上层数据的<strong>自然粒度</strong>一致吗？</p>
+
+<div class="key">
+<p>判断接口粒度的快捷问题：<strong>上层一次真实的业务动作，需要调用你几次？</strong>一次 = 粒度对了。一万次 = 你把循环推给了每个调用方，而且每个调用方都会自己写一遍稍有不同的循环，那就是变更放大的种子。</p>
+</div>
+
+<h2><span class="num">11.4</span>同一条原则，在实现层再来一次</h2>
+
+<p>最容易漏掉的一点：设计两次不只用一次。接口定下来之后，<strong>实现方案也要设计两次</strong>，而且比的对象完全不同。</p>
+
+<p>文本缓冲的实现至少有三种根本不同的做法：</p>
+
+<ul>
+  <li><strong>行的链表</strong>：每行一个节点。插入行 O(1)，定位第 N 行 O(N)。</li>
+  <li><strong>定长块数组</strong>：整块连续，插入要 <code>memmove</code>。读快，中间插入 O(N)。</li>
+  <li><strong>间隙缓冲（gap buffer）</strong>：一块 <code>Vec&lt;u8&gt;</code>，光标处留一个空洞，插入删字符在空洞边缘挪动。</li>
+</ul>
+
+<p>间隙缓冲的形状大致是这样，注意它完全是实现细节，一行都不该出现在<a class="gl" href="../reference/glossary.html#interface-comment">接口注释</a><span class="en-inl">interface comment</span>里：</p>
+
+<pre><code>class Text {
+public:
+    // 接口同 11.2 方案 C
+private:
+    std::vector&lt;char&gt; buf_;   // [0, gap_start_) 是前段，[gap_end_, buf_.size()) 是后段
+    size_t gap_start_ = 0;
+    size_t gap_end_   = 0;
+    // 不变量：gap_start_ &lt;= gap_end_，空洞里的字节内容无意义
+    void move_gap(size_t pos);   // 把空洞挪到 pos 处
+};</code></pre>
+
+<p>书里那句话是本章的骨架：</p>
+
+<blockquote>
+<p>实现的目标与接口的目标是不同的：对于实现，最重要的是简单性和性能。</p>
+<cite>第 11 章 · 在多个层级应用设计两次</cite>
+</blockquote>
+
+<p>另一点也值得停一下。同一段代码，你在两个层级上用两套标准：接口层为调用方的易用性服务（所以选范围接口），实现层为自己的简单性和性能服务（所以选间隙缓冲，而不是在你已经有一个 <code>Vec</code>-based 实现的情况下再套一层 rope）。<strong>混用这两套标准，就是你「越拆越乱」的常见来源</strong>：拿性能理由去设计接口（「这样实现快，所以调用方你传裸指针吧」），或者拿易用性理由去挑内部结构（「这个链表看起来更优雅」）。</p>
+
+<h2><span class="num">11.5</span>聪明人的陷阱</h2>
+
+<p>这一节不太技术，但它解释了为什么这个习惯很难养成，值得一读：</p>
+
+<blockquote>
+<p>真正聪明的人有时很难接受设计两次。他们长大后发现，自己对任何问题的第一个快速构想就足以取得好成绩，于是养成不假思索的工作习惯。但随着他们被推到越来越难的环境里，最终每个人都会达到「第一个想法不再够用」的境地。大型软件系统的设计就属于这一类：没有人足够优秀，能第一次就做好。</p>
+<cite>第 11 章 · 聪明人的陷阱</cite>
+</blockquote>
+
+<p>对写底层代码的人，这段话有个特殊版本：<em>你的第一直觉在小模块上确实常常是对的</em>（一个 30 行的 ring buffer，接口几乎没得选）。所以你会形成「我的直觉可靠」的信念，然后在第一个需要长期演化的接口上翻车。判断标准不是「这个模块大不大」，而是<strong>「有多少个调用方会<a class="gl" href="../reference/glossary.html#dependency">依赖</a><span class="en-inl">dependency</span>这个决定」</strong>：一个会被全项目调用的 20 行函数，值得设计两次；一个只在文件内使用的 helper，不值得。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div>
+<b>这样写</b>
+<pre><code>// 第一版：单字节接口，一次一个
+class PageCache {
+public:
+    char get(uint64_t off);              // 读一个字节
+    void put(uint64_t off, char c);      // 写一个字节
+    bool present(uint64_t off) const;    // 这一页在不在
+};</code></pre>
+</div>
+<div>
+<b>为什么烂</b>
+<p>三个问题同时出现。① <strong>粒度错</strong>：上层要拷 4KB，就得循环 4096 次，每次都重新做一遍「偏移 → 页号 → 页表查表」，而页表查表的结果在 4096 次里完全一样。② <strong>接口浅</strong>：每个方法只做一次内存访问那点事，调用方拿不到任何「页缓存」这个抽象：页、脏位、换出，全在上层。③ <strong>变更放大</strong>：想把缓存策略从 LRU 换成 clock，得改每个调用方的循环（它们各自抄了一份）。</p>
+</div>
+</div>
+<p>改法：把接口提升到「一段连续字节」这个层次，并把页查找收进实现，<code>read</code> 一次只为整个范围做一次映射查找：</p>
+<pre><code>class PageCache {
+public:
+    // 读 [off, off+n) 到 dst，返回实际读到的字节数；
+    // 范围超出设备末尾时返回较短长度（不报错，见第 10 章）。
+    ssize_t read(uint64_t off, void* dst, size_t n);
+    ssize_t write(uint64_t off, const void* src, size_t n);
+    void    flush();
+    // 页、脏位、淘汰策略都是实现细节，不出现。
+private:
+    struct Frame { uint64_t page_no; bool dirty; /* ... */ };
+    std::vector&lt;Frame&gt; frames_;
+};</code></pre>
+<p>如果当初写了两个版本再比，第一版不会活下来：它的所有缺点在并排对比时一眼可见。</p>
+</div>
+
+<h2><span class="num">11.6</span>怎么把这件事说进 code review</h2>
+
+<p>痛点②是「评审说不出所以然」。设计两次给了你一句<strong>可反驳</strong>的话：不是品味，是流程：</p>
+
+<div class="key">
+<p><strong>这话可以直接贴到 MR 上：</strong>「这个接口我担心粒度不对——上层要完成一次 <code>flush_segment()</code>，得调 <code>write_byte()</code> 循环 N 次，而且 N 次都要重做同一份页查找。能不能再画一版按范围读写的接口，两版并排比一下再定？不需要写实现，签名加两行注释就够。」</p>
+</div>
+
+<p>这句话为什么比「我觉得不太好」有力：它点名了<strong>具体的调用序列</strong>、<strong>具体的重复工作</strong>、<strong>具体的最小行动</strong>（只画签名），并且没有断言作者的方案是错的，只是要求一个对比。作者无法用「你不懂上下文」反驳，因为你说的就是他代码里的调用点。</p>
+
+<hr>
+
+<h2><span class="num">练习</span>这三处，值得设计两次吗</h2>
+
+<p>四个场景。判断「该不该花时间画第二个方案」，以及第二个方案该在哪个层级上做。</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p>一个 <code>static inline</code> 的 <code>align_up(size, 64)</code>，只在同一个 <code>.c</code> 文件的三处使用。</p>
+    <div class="opts">
+      <button data-ok="1">不值得，直接用</button>
+      <button>值得，接口层再来一版</button>
+      <button>值得，实现层再来一版</button>
+    </div>
+    <p class="note">判断依据只有一个：<strong>多少调用方会依赖这个决定</strong>。三处调用、一个文件、语义无歧义（向上取整到 64 的倍数），第二个方案的收益接近零。这里该花的力气是把 <code>size == 0</code> 和溢出写对，而不是画第二版接口。</p>
+  </div>
+
+  <div class="row">
+    <p>一个会被 40 多个调用点使用的 <code>Logger::log(level, msg)</code>，msg 是 <code>std::string</code>，日志路径在热路径上。</p>
+    <div class="opts">
+      <button>不值得，签名很标准</button>
+      <button data-ok="1">值得，接口层再来一版</button>
+      <button>值得，只改实现层</button>
+    </div>
+    <p class="note">40 个调用点意味着接口决策的税要付 40 次。第二个方案至少该考虑：<code>std::string_view</code> 避免热路径构造、<code>level</code> 是否该编译期裁剪、是否需要 <code>logf(fmt, ...)</code> 形式。注意这些<strong>全都在接口层</strong>：实现改成异步写入并不能解决调用方构造 string 的开销。</p>
+  </div>
+
+  <div class="row">
+    <p>一个 <code>RingBuffer</code>，它的 <code>push</code>/<code>pop</code> 接口已经定了（就是 SPSC 队列的标准形状），但你在纠结内部用「掩码取模」还是「分支判断」。</p>
+    <div class="opts">
+      <button>两个都做，接口层比较</button>
+      <button>不值得，随机挑一个</button>
+      <button data-ok="1">只做实现层对比</button>
+    </div>
+    <p class="note">接口是被外部约束死的（SPSC 语义），再画第二版接口纯属浪费。这时候设计两次的正确层级是<strong>实现</strong>，而且比较轴是性能与简单性：掩码版要求容量是 2 的幂，这是要写进文档的约束；分支版没有这个约束但多一条不可预测分支。</p>
+  </div>
+
+  <div class="row">
+    <p>一个模块拆成 <code>Parser</code> + <code>Validator</code> + <code>Emitter</code>，每加一种新格式，三个文件都要改。</p>
+    <div class="opts">
+      <button data-ok="1">值得，先重画模块边界</button>
+      <button>不值得，加抽象基类即可</button>
+      <button>不值得，是测试没写好</button>
+    </div>
+    <p class="note">「每加一种格式要改三个文件」正是痛点①和痛点③的合体：格式知识泄漏到了三个模块。这时设计两次的对象不是接口签名，而是<strong>模块分解</strong>：画出至少两版分解图（按阶段拆 vs 按格式知识拆），用第 5 章的时间分解去检查前者是不是假的自然。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>给同一个东西写两版签名</h2>
+
+<div class="recall">
+<p>你的代码里有一个 <code>Config</code>，现在长这样：</p>
+<pre><code>class Config {
+public:
+    bool load(const char* path);
+    const std::unordered_map&lt;std::string, std::string&gt;&amp; all() const;
+};</code></pre>
+<p>调用方 <code>auto&amp; m = cfg.all(); int n = std::stoi(m.at("threads"));</code> 在 20 多个地方出现。写出<strong>两个根本不同</strong>的替代接口，并说清各自把什么工作留在了上层。</p>
+<p class="hint-inline">提示：一个方向是「让 Config 懂类型」，另一个方向是「让 Config 完全不懂类型，但把查找和错误语义收进来」。两个方向都不该只是给 <code>all()</code> 换个名字。</p>
+<textarea placeholder="接口 A：… 接口 B：… 各自的缺点：…"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p><strong>方向一：Config 懂类型。</strong></p>
+<pre><code>class Config {
+public:
+    // 缺失或无法解析时返回 fallback，并在 stderr 警告一次（不抛异常）
+    int    get_int(std::string_view key, int fallback) const;
+    bool   get_bool(std::string_view key, bool fallback) const;
+    std::string get_str(std::string_view key, std::string_view fallback) const;
+};</code></pre>
+<p>上层不用再写 <code>stoi</code>，也不用各自决定「缺 key 怎么办」，这正是第 5 章那个 <code>getIntParameter</code> 的形状。缺点：每加一种类型就要加一个方法（方法数会膨胀，注意第 4 章的类炎）；而且「警告一次」是隐藏的副作用，得写进接口注释。</p>
+
+<p><strong>方向二：Config 不懂类型，但把「查找 + 存在性」做成一个值对象。</strong></p>
+<pre><code>class Config {
+public:
+    // 返回 std::nullopt 表示 key 不存在；存在但为空串是不同的值。
+    std::optional&lt;std::string_view&gt; get(std::string_view key) const;
+};
+// 调用方：
+if (auto v = cfg.get("threads")) { n = parse_or(v, 4); }</code></pre>
+<p>上层仍要自己 parse，但<strong>「key 不存在」不再用空串或异常表示</strong>，歧义被消除了。缺点：parse 逻辑依然散落各处，20 个调用点各写一遍边界处理。</p>
+
+<p><strong>第三个方案（这才是设计两次的产出）：</strong>两个方向都保留，<code>get()</code> 给需要原值的少数调用方，<code>get_int()</code>/<code>get_bool()</code> 覆盖 90% 的场景，实现上后者调前者。<strong>你会发现两版对比后的「合并版」往往比任何一版都好。</strong>另外注意：<code>all()</code> 返回内部 map 的引用这件事本身就是接口泄漏（第 5 章），两版都必须删掉它，而不是保留它当兼容层。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">→</span>往下走</h2>
+
+<p>设计两次的产出是一份更好的接口。而接口里那些「代码说不出来」的部分，只能靠注释固定下来。下一章处理一个更基础的问题：既然代码是自解释的，为什么还要写注释？答案不是「为了好看」，而是<strong>没有注释就没有抽象，没有抽象就藏不住复杂性</strong>。这正好接上你刚做完的练习：那两版接口的区别，最后是用注释写清楚的。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch11.html">第 11 章 设计两次（中文全译）</a> — 原文的文本类例子是 Java 版，把三个接口的对比读完，再回来看 11.2 的 C++ 版，你会发现自己已经能自动做这个翻译了。</p>
+  <p><a href="https://web.stanford.edu/~ouster/cgi-bin/book.php">作者官方书页</a> — 第 11 章是 CS 190 课程里被引用最多的章节之一；作者在书页上列出了各版本的勘误，第二版对这一章几乎没改，说明这条原则站得住。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">把你正在纠结的一个接口签名贴给我（连同 2–3 个真实调用点），我按 11.3 的四个轴给你画第二个方案，包括「合并版」会长什么样。有真实调用点的对比才有意义，光看签名看不出粒度对不对。</p>
+
+  <div class="nav-links">
+    <span><a href="0010-define-errors-out-of-existence.html">← L10 · 让错误不存在</a></span>
+    <span><a href="0012-why-write-comments.html">L12 · 为什么要写注释 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>

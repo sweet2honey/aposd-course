@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>L13 · 注释应该描述代码中不明显的内容 — 软件设计的哲学</title>
+<link rel="stylesheet" href="../assets/course.css">
+</head>
+<body>
+<main class="page">
+
+<p class="crumb"><a href="../reference/glossary.html">术语表</a> · 第 13 章 · 课程 13 / 21</p>
+
+<h1>注释应该描述代码中不明显的内容</h1>
+<p class="standfirst">一整章只讲一条规则。难的是这条规则的推论：什么叫「不明显」不由作者决定，由第一次读你代码的人决定。而写不出一条好注释，往往不是笔力问题，是设计问题——这一章后半段把它变成了一件可以在评审里当场验证的事。</p>
+
+<h2><span class="num">13.1</span>唯一的规则，以及它为什么难执行</h2>
+
+<div class="excerpt">
+<span class="src">第 13 章 · 指导原则</span>
+<p>写注释的原因是：用编程语言写的语句无法捕获开发者在写代码时想到的全部重要信息。注释记录这些信息，让后来的开发者可以轻松理解和修改代码。注释的指导原则是——<strong>注释应当描述代码中不明显的内容。</strong></p>
+<p>从代码看，有很多东西并不明显。有时是底层细节：当一对索引描述一个范围时，由索引指出的元素在范围内还是范围外，并不明显。有时不清楚代码为什么需要，或者为什么必须以特定方式实现。有时开发者遵循某些规则，比如「总是在 <code>a</code> 之前调用 <code>b</code>」。你或许能通过读完所有代码猜出规则，但那很痛苦且容易出错。注释可以让规则变得明确。</p>
+</div>
+
+<p>规则只有一句话，但它把注释分成三类，只有一类有价值：</p>
+
+<table>
+  <thead><tr><th>注释做到了什么</th><th>例子</th><th>价值</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>低于代码：补充精度</td>
+      <td>「单位是字节，不含结尾 NUL；区间左闭右开」</td>
+      <td><strong>高</strong>——签名说不出这些</td>
+    </tr>
+    <tr>
+      <td>高于代码：补充直觉</td>
+      <td>「尝试把当前 key hash 追加到一个尚未发送的 RPC 上」</td>
+      <td><strong>高</strong>——给出理解整段代码的框架</td>
+    </tr>
+    <tr>
+      <td>与代码同层：复述</td>
+      <td>「把 i 加一」「如果对象是空闲的」</td>
+      <td><strong>零</strong>——这是「注释无用论」的成因</td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="key">
+<p><strong>一条可当场执行的判据：</strong>写完一条注释，问自己——<em>一个从没看过这段代码的人，只看注释旁边那段代码，能不能写出同样这句注释？</em>能，删掉它。这句话是第 13 章最值钱的一行，它把「注释写得好不好」从品味问题变成了可以自测的问题。</p>
+</div>
+
+<h2><span class="num">13.2</span>最常见的病因：注释重复代码</h2>
+
+<p>书里引了一段真实代码（原文是 Python，此处保留其形状）：</p>
+
+<pre><code>ptr_copy = get_copy(obj)          # Get pointer copy
+if is_unlocked(ptr_copy):         # Is obj free?
+    return obj                    # return current obj
+if is_copy(ptr_copy):             # Already a copy?
+    return obj                    # return obj
+thread_id = get_thread_id(ptr_copy)
+if thread_id == ctx.thread_id:    # Locked by current ctx
+    return ptr_copy               # Return copy</code></pre>
+
+<p>六条注释里五条是废话。唯一有信息的是 <code># Locked by current ctx</code>——它暗示了「锁的持有者与线程相关」这个代码里看不出来的事实。</p>
+
+<p>注意这些注释的<strong>详细程度与代码完全一致：一行代码配一条注释。</strong>这个比例本身就是红旗。一条好注释通常对应 5–20 行代码，因为它解释的是「这一块在整体里是干什么的」，而不是「这一行做了什么」。</p>
+
+<p>第二种重复更隐蔽：<strong>注释里用被注释实体自己的名字。</strong></p>
+
+<pre><code>// 从 REQ 获取规范化后的资源名。
+static std::vector&lt;std::string&gt; getNormalizedResourceNames(const HttpRequest&amp; req);
+
+// 把 param 向下转型为 type。
+static void* downcast_param(void* param, const char* type);
+
+// 每一行文本的水平内边距。
+static constexpr int textHorizontalPadding = 4;</code></pre>
+
+<p>第一条：注释是从函数名和参数名里抠出单词、再拼成一个句子，唯一多出来的信息是「从」和「后」两个虚词。第二条：多出来的只有一个 <code>to</code>。第三条多出来一个「的」。</p>
+
+<div class="excerpt">
+<span class="src">第 13 章 · 换一套词</span>
+<p>写一条好注释，第一步是<strong>在注释里使用与被描述实体名字不同的词</strong>。为注释选词时，目标是提供关于实体含义的更多信息，而不是重复它的名字。例如下面是 <code>textHorizontalPadding</code> 更好的注释：</p>
+<pre><code>/*
+ * 每一行文本左右两侧各留多少空白，单位是像素。
+ */
+private static final int textHorizontalPadding = 4;</code></pre>
+<p>这条注释提供了声明本身看不出的信息：单位（像素），以及这个内边距作用于每一行的<strong>两侧</strong>。如果读者不熟悉「内边距」这个说法，注释应该解释它，而不是直接沿用这个词。</p>
+</div>
+
+<p>被抠掉的那些信息恰恰是最要命的：<code>getNormalizedResourceNames</code> 里的「规范化」指什么？返回的数组每个元素是什么？<code>downcast</code> 失败了怎么办，返回 <code>nullptr</code> 还是 <code>abort</code>？内边距单位是像素还是字符？<strong>这些才是调用方需要知道的。</strong></p>
+
+<h2><span class="num">13.3</span>往低处写：精度</h2>
+
+<p>变量的声明注释最需要的是精度。书里列了五个问题，每个都能直接拿去审你自己的代码：</p>
+
+<ul>
+  <li>这个变量的<strong>单位</strong>是什么？</li>
+  <li>边界条件是<strong>包含还是排除</strong>？</li>
+  <li>如果允许空值，它<strong>意味着</strong>什么？</li>
+  <li>如果它引用了最终必须释放/关闭的资源，<strong>谁负责</strong>？</li>
+  <li>有没有对它<strong>恒成立</strong>的性质（不变量），比如「这个列表至少有一个元素」？</li>
+</ul>
+
+<p>把这些信息靠「检查所有使用该变量的代码」来获得是可行的——但费时且容易出错。注释要写到<strong>读者不必翻遍全部代码</strong>的程度。</p>
+
+<p>最常见的失败是注释太模糊：</p>
+
+<pre><code>// resp Buffer 里的当前偏移
+uint32_t offset;
+
+// 包含文档内所有行宽和出现次数。
+std::map&lt;int, int&gt; lineWidths;</code></pre>
+
+<p>「当前」是什么意思？——第 1 条注释根本没定义「当前」相对于什么。「行宽和出现次数」哪个是 key 哪个是 value？宽度是像素还是字符？改法：</p>
+
+<pre><code>// 本缓冲中第一个尚未返回给客户端的对象的位置。
+uint32_t offset;
+
+// 行长统计，形式为 &lt;长度, 行数&gt;：长度是一行中的字符数
+// （含换行符），行数是字符数恰好等于该长度的行有多少行。
+// 某个长度如果没有对应的行，则表中没有该条记录。
+std::map&lt;size_t, size_t&gt; num_lines_with_length;</code></pre>
+
+<p>第二个改法里有两个动作值得单拎出来：① 名字从 <code>lineWidths</code> 改成 <code>num_lines_with_length</code>，把 key/value 的方向塞进了名字；② <strong>把「没有该条记录意味着什么」也写出来了</strong>——这条信息无法从类型推出，却决定了调用方要不要写 <code>if (!m.count(k))</code>。</p>
+
+<p>还有一个技巧：<strong>描述变量时用名词，不用动词。</strong>写它<em>代表什么</em>，不写它<em>怎么被改</em>。书里的例子：</p>
+
+<pre><code>/* FOLLOWER VARIABLE：指示变量，让 Receiver 与 PeriodicTasks 线程
+ * 沟通「是否在 follower 的选举超时窗口内收到过心跳」。
+ * 收到有效心跳时置 TRUE。
+ * 选举超时窗口重置时置 FALSE。 */
+bool receivedValidHeartbeat;</code></pre>
+
+<p>这注释在模仿代码结构（「在哪置 true / 在哪置 false」）。而它的读者要的是含义：</p>
+
+<pre><code>/* true 表示自上次重置选举计时器以来收到过心跳。
+ * 用于 Receiver 与 PeriodicTasks 线程之间的通信。 */
+bool receivedValidHeartbeat;</code></pre>
+
+<p>从第二版可以<strong>推</strong>出什么时候置 true、什么时候置 false，所以它更短也更有用。判断标准还是那一条：能推出来的东西不必写。</p>
+
+<h2><span class="num">13.4</span>往高处写：直觉</h2>
+
+<p>另一类注释比代码<strong>更抽象</strong>：忽略细节，帮读者理解整体意图。这在方法内部的实现注释里最有用。书里的例子是一条失败的实现注释：</p>
+
+<pre><code>// 如果存在一个 LOADING 状态的 readRpc，其 session 与 assignPos
+// 指向的 PKHash 相同，且该 readRPC 中最后一个 PKHash 比当前正在
+// 分配的 PKHash 小，则把当前 PKHash 放进那个 readRPC。
+int readActiveRpcId = RPC_ID_NOT_ASSIGNED;
+for (int i = 0; i &lt; NUM_READ_RPC; i++) {
+    if (session == readRpc[i].session
+        &amp;&amp; readRpc[i].status == LOADING
+        &amp;&amp; readRpc[i].maxPos &lt; assignPos
+        &amp;&amp; readRpc[i].numHashes &lt; MAX_PKHASHES_PERRPC) {
+        readActiveRpcId = i;
+        break;
+    }
+}</code></pre>
+
+<p>两个毛病同时犯：<strong>部分复述代码</strong>（「如果存在一个 LOADING 状态的 readRpc」重复了 <code>status == LOADING</code>），<strong>又不解释整体目的</strong>（这段代码在方法里干什么）。于是读完了还是不知道为什么要挑这个 RPC。</p>
+
+<pre><code>// 尝试把当前 key hash 追加到一个发往目标服务器、
+// 尚未发送出去的已有 RPC 上。</code></pre>
+
+<p>这一版没有细节，但有了它，读者能自己解释掉代码里几乎每一件事：循环当然要遍历所有已有 RPC；session 测试当然是判断这个 RPC 是否发往正确的服务器；LOADING 测试说明 RPC 有多个状态、某些状态下再塞 hash 不安全；<code>MAX_PKHASHES_PERRPC</code> 测试说明单个 RPC 能带的 hash 有上限。唯一没被解释的是 <code>maxPos</code> 那个条件——而这也正是作者自己指出的。</p>
+
+<div class="key">
+<p>好注释的标准不是「覆盖所有细节」，而是<strong>给读者一个概念框架，让他能自己解释掉大部分细节，并且能判断剩下的那一处是不是可疑</strong>。好的高层注释表达一两个简单想法（「追加到已有 RPC」），用这个框架，每条语句与总目标的关系一目了然。</p>
+</div>
+
+<p>书里还给了另一段很好的例子，它做了两件事——先抽象地描述代码干什么，再用高层方式解释<strong>为什么会走到这里</strong>：</p>
+
+<pre><code>if (numProcessedPKHashes &lt; readRpc[i].numHashes) {
+    // 有些 key hash 在这个请求里没能查到（原因可能是：
+    // 服务器上没有存、服务器崩了、或者响应消息里空间不够）。
+    // 把没处理到的 hash 标记出来，让它们被重新分配到新的 RPC。
+    for (size_t p = removePos; p &lt; insertPos; p++) { ... }
+}</code></pre>
+
+<p>「为什么执行到这里」型的注释极其有用。给方法写注释时，描述它<strong>最可能在什么条件下被调用</strong>（尤其是只在异常路径下被调用时）非常有价值——这正是 13.1 里那条「总是在 a 之前调用 b」的规则该被写下来的地方。</p>
+
+<h2><span class="num">13.5</span>四种注释，以及最重要的一种区分</h2>
+
+<p>书里把注释分成四类。这个分类本身就是一个评审时的检查表：</p>
+
+<table>
+  <thead><tr><th>类别</th><th>位置</th><th>写什么</th><th>重要性</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><strong>接口注释</strong></td>
+      <td>模块声明之前（类 / 结构体 / 函数）</td>
+      <td>它提供的抽象；参数、返回值、副作用、异常、前置条件</td>
+      <td>最重要</td>
+    </tr>
+    <tr>
+      <td><strong>数据结构成员注释</strong></td>
+      <td>字段声明旁</td>
+      <td>这个字段代表什么（单位、边界、不变量、所有权）</td>
+      <td>最重要</td>
+    </tr>
+    <tr>
+      <td><strong>实现注释</strong></td>
+      <td>函数体内部</td>
+      <td>这块代码在做什么；为什么这么做</td>
+      <td>多数情况不必写</td>
+    </tr>
+    <tr>
+      <td><strong>跨模块注释</strong></td>
+      <td>无固定位置</td>
+      <td>跨模块边界的依赖</td>
+      <td>最罕见，需要时很关键</td>
+    </tr>
+  </tbody>
+</table>
+
+<p>书里有一句话很实用，专治「这个要不要写注释」的犹豫：<strong>注释所有内容，比费精力担心是否需要注释要容易得多。</strong>例外当然有（getter/setter 常常属于例外），但很罕见。</p>
+
+<p>而接口注释与实现注释的<strong>分离</strong>，是本章最关键的一条设计判据：</p>
+
+<div class="excerpt">
+<span class="src">第 13 章 · 接口注释与实现注释</span>
+<p>记录抽象的第一步，是把接口注释与实现注释分开。接口注释提供使用类或方法时需要知道的信息，它定义了抽象；实现注释描述类或方法内部如何实现这个抽象。区分这两种注释很重要，这样接口的使用者就不会暴露于实现细节。</p>
+<p>此外，这两种形式最好<strong>有所区别</strong>。<strong>如果接口注释也必须描述实现，那么这个类或方法就是浅的。</strong>这意味着：写注释这个动作，本身就能提供关于设计质量的线索。</p>
+</div>
+
+<p>第三句话是本章的心脏。把它展开成一句可以在评审里用的判断：</p>
+
+<div class="key">
+<p><strong>如果你的接口注释忍不住要写「内部是一个 …」「这里采用 … 算法」「先 … 再 …」，那不是注释没写好，是这个模块太浅。</strong>浅模块的定义就是「接口复杂度和功能差不多」——所以接口注释不可避免要讲实现，因为接口本身没有讲出多少东西。</p>
+</div>
+
+<p>书里给了两个具体形态，都以 C/C++ 的 IndexLookup 为例，值得完整看一遍。原始版接口注释长这样（节选）：</p>
+
+<pre><code>/*
+ * 本类实现索引范围查找的客户端框架。它管理一个 LookupIndexKeys RPC
+ * 和多个 IndexedRead RPC。客户端只需在头文件里包含 "IndexLookup.h"
+ * 就能使用 IndexLookup 类。可以在下面的 config 中设置若干参数：
+ * - 并发的 indexedRead RPC 数量
+ * - 一个 indexedRead RPC 一次最多能带的 PKHash 数量
+ * - active PKHashes 的大小
+ * ...
+ */</code></pre>
+
+<p>问题一目了然：第一段几乎全是实现。用户不需要知道底层 RPC 叫什么名字；那几个 config 参数全是 private 变量，只和维护者有关。还有明显的废话（「需要在头文件里包含 IndexLookup.h」——写 C++ 的人都能猜到；「提供所有必要的信息」同义反复）。</p>
+
+<pre><code>/*
+ * 客户端应用用本类通过索引做范围查询。每个实例代表一次范围查询。
+ *
+ * 要开始一次范围查询，客户端创建一个实例，然后调用 getNext()
+ * 取回所需范围内的对象。对 getNext() 返回的每个对象，调用方
+ * 可以调用 getKey()、getKeyLength()、getValue()、getValueLength()
+ * 来取得该对象的信息。
+ */</code></pre>
+
+<p>更短、更可取。它甚至没提 <code>getNext()</code> 返回 NULL 的含义——因为那属于 <code>getNext()</code> 自己的接口注释，类的注释只负责说清这些方法<strong>如何配合</strong>。它也没提服务器崩溃——因为系统自动恢复，崩溃对应用层不可见。</p>
+
+<p>「服务器崩溃」这一条最有意思：它在问「用户需不需要知道这个」时被筛掉了。同一份清单里，书里逐条判断：</p>
+
+<table>
+  <thead><tr><th>信息</th><th>要不要写进接口注释</th></tr></thead>
+  <tbody>
+    <tr><td>发给服务器的消息格式</td><td>不要——实现细节，应藏在类里</td></tr>
+    <tr><td>判断对象是否在范围内的比较函数（整数/浮点/字符串？）</td><td><strong>要</strong>——用户需要知道</td></tr>
+    <tr><td>索引在服务器上的存储结构</td><td>不要——连实现都不需要知道</td></tr>
+    <tr><td>是否同时向多台服务器发多个请求</td><td>可能要——如果这是性能手段，用户会在意</td></tr>
+    <tr><td>服务器崩溃的处理机制</td><td>不要——崩溃对应用层不可见；<strong>如果</strong>崩溃会暴露给应用，则要描述它<em>如何表现</em>，而不是恢复机制的细节</td></tr>
+  </tbody>
+</table>
+
+<p>最后一行给了一条可复用的规则：<strong>暴露给调用方的是「现象」，不是「机制」</strong>。同理，<code>isReady()</code> 的原始注释讲了它由 DCFT 模块实现、内部是规则驱动的、<code>getNext()</code> 在 while 循环里调它——全是机制。好的版本只说：</p>
+
+<pre><code>/*
+ * 表示一次索引读取是否已经推进到足够程度，使 getNext 可以
+ * 立即返回而不阻塞。此外，本方法承担了索引读取的绝大部分实际工作，
+ * 因此必须被调用（直接调用，或通过 getNext 间接调用），
+ * 索引读取才能推进。
+ *
+ * \return
+ * true 表示下一次调用 getNext 不会阻塞（至少有一个对象可返回，
+ * 或已经查到末尾）；false 表示 getNext 可能阻塞。
+ */</code></pre>
+
+<p>注意这条注释的第二句——它说的是<strong>一个调用义务</strong>（「必须被调用」），这是调用方绝对不能不知道、而代码里完全看不出来的信息。这类「义务」比任何一篇架构文档都重要。</p>
+
+<h2><span class="num">13.6</span>实现注释：多数方法不需要</h2>
+
+<p>书里说得很干脆：大多数方法足够短、足够简单，根本不需要实现注释——有了代码和接口注释就能看懂它怎么工作。需要写的情况只有三种：</p>
+
+<ul>
+  <li><strong>长方法里的阶段划分。</strong>每个主要代码块前一句高层描述：<code>// 阶段 1：扫描活跃 RPC，看有没有已完成的。</code></li>
+  <li><strong>循环。</strong>在循环前说明每次迭代做什么，且只对长或复杂的循环写：<code>// 下面这个循环的每次迭代从请求消息里取出一个请求、递增对应对象、并往响应消息里追加一条响应。</code></li>
+  <li><strong>为什么这么写。</strong>代码里有从阅读看不出的窍门时写下来。修 bug 加的不明显代码尤其要写，可以直接引用 bug 号而不是重复细节（<code>// 修复 RAM-436：Linux 2.4.x 设备驱动崩溃相关。</code>）——这也是避免注释重复的一个例子。</li>
+</ul>
+
+<p>局部变量同理：名字够好、所有用法在几行内可见，就不用注释；如果它在大量代码中被使用，才值得写，而且仍然写它<strong>代表什么</strong>，不是怎么被改。</p>
+
+<h2><span class="num">13.7</span>跨模块注释：最难放的一类</h2>
+
+<p>理想情况下，每个重要设计决策都封装在一个类里。但真实系统里，总有一些决策<strong>必然横跨多个类</strong>——网络协议的设计同时影响发送方和接收方，而它们可以在完全不同的地方实现。这类决策复杂、微妙、容易出 bug，文档因此格外重要。</p>
+
+<p>难点不在写，在<strong>放</strong>：得找个位置让开发者会自然地发现它。书里给了三种策略，各有代价：</p>
+
+<div class="grid2">
+  <div class="card">
+    <h4>① 蹭一个必经之地</h4>
+    <p>RAMCloud 的 <code>Status</code> 枚举：加一个新状态值要改好几个文件（状态到异常的映射、人类可读消息表……）。但加值时<strong>必然</strong>要打开这个枚举的声明，于是在枚举里写注释，列出所有其他必须同改的地方。</p>
+    <p>这是最好的情况：存在一个所有人绕不开的点。</p>
+  </div>
+  <div class="card">
+    <h4>② 集中到一个 designNotes 文件</h4>
+    <p>没有必经之地时（书里的例子是「僵尸服务器」的逻辑，散在多个模块里且相互依赖），把跨模块问题记在一个按主题分节的中央文件里。</p>
+    <p>然后在相关代码处只留一句：<code>// 见 designNotes 的「Zombies」。</code>好处是文档只有一份；坏处是它离代码远，系统演化时难保持同步。</p>
+  </div>
+</div>
+
+<p>这条对痛点①「改一个需求要动好几处，怕漏」是直接回应：<strong>你没法消除跨模块依赖，但可以让「还有哪里要改」这件事变得可发现。</strong>那段枚举注释就是一份活的 checklist——它把「怕漏」变成了「照着列表改」。</p>
+
+<div class="anti">
+<h4>反例</h4>
+<div class="pair">
+<div>
+<b>这样写</b>
+<pre><code>/**
+ * 网络层发送器。负责把消息发出去。
+ * 内部用一个 ring buffer 缓存待发数据，
+ * 由 tx_thread 线程驱动，每轮最多发 32 个包。
+ */
+class NetSender {
+public:
+    // 发送一帧
+    int send(const Frame&amp; f);
+    // 关闭
+    void close();
+};</code></pre>
+</div>
+<div>
+<b>为什么烂</b>
+<p>这条接口注释犯了本章全部四个错误：</p>
+<p>① <strong>重复名字</strong>：「网络层发送器，负责把消息发出去」= 把 <code>NetSender::send</code> 换句话说一遍。</p>
+<p>② <strong>实现细节泄漏进接口</strong>：ring buffer、tx_thread、每轮 32 个包——用户不该知道这些；而且一旦换成 io_uring，这条注释就假了，属于「会过时的注释」的最坏形态（过时且误导）。</p>
+<p>③ <strong>漏掉真正的契约</strong>：<code>send</code> 是拷贝帧还是只存指针？队列满了阻塞还是丢弃还是返回错误？<code>close</code> 会等待未发完的数据吗？能重复调用吗？发送失败后帧的所有权归谁？——<strong>任何一条猜错都是内存或数据问题。</strong></p>
+<p>④ <strong>漏掉义务</strong>：<code>send</code> 是否线程安全？如果依赖调用方加锁，这条必须写——它是 13.1 里「总是在 a 之前调用 b」那类规则。</p>
+</div>
+</div>
+<p>改法：删掉所有「怎么做」，只留「调用方必须知道」。实现方案（ring buffer / 线程 / 批量）搬到 <code>.cpp</code> 里类定义处或直接删掉——它们会随实现变化，接口注释不该承担这个风险。</p>
+<pre><code>/**
+ * 把帧写入发送队列。线程安全：可在任意线程调用。
+ *
+ * \param f  帧内容。本类会<strong>拷贝</strong>帧数据，返回后调用方
+ *           可以立即复用或释放 f。
+ * \return   &gt;=0 已接受；队列满时返回 -ENOSPC，此时<strong>帧未被
+ *           发送</strong>，调用方负责重试或丢弃。
+ *           返回 -EPIPE 表示连接已关闭且不可恢复。
+ *
+ * \note 成功返回不代表已上线，只代表进入了发送队列。
+ * \note close() 会等待队列排空；close() 之后再 send() 返回 -EPIPE。
+ */
+int send(const Frame&amp; f);</code></pre>
+<p>改完之后，<strong>把它当成一支试管</strong>：如果这段注释长到必须描述内部结构，说明 <code>NetSender</code> 太浅了——这是设计信号，不是注释问题。</p>
+</div>
+
+<h2><span class="num">13.8</span>最难写的那条注释，是设计的报警器</h2>
+
+<p>本章末尾那段话，其实是第 15 章的引子，但值得在这里就记住：</p>
+
+<div class="excerpt">
+<span class="src">第 13 章 · 从第一次读你代码的人的角度</span>
+<p>遵循「注释应当描述代码中不明显的内容」这条规则时，「明显」是<strong>从第一次读你代码的人（不是你）的角度</strong>看的。写注释时，试着把自己放进读者的心态，问自己：他或她需要知道哪些关键的事？</p>
+<p>如果你的代码正在被评审，而评审者告诉你某处不明显，<strong>不要和他争</strong>。如果读者觉得它不明显，那它就不明显。不要争辩，而是去理解他觉得困惑的地方，看看能不能用更好的注释、或者更好的代码把它说清楚。</p>
+</div>
+
+<p>「不要和他争」这五个字解决痛点②的另一半。评审里最常见的死循环是「这里很明显啊」/「对我来说不明显」——两边都对，因为「明显」是相对读者而言的。作者这句判断直接给了裁决规则：<strong>读者的困惑是证据，不是意见。</strong></p>
+
+<p>而「或者更好的代码」这半句，指向第 15 章的核心机制：<strong>如果你写不出简洁完整的注释，说明你描述的东西设计有问题。</strong>注释难写有四种典型症状，每一种都对应一种设计病：</p>
+
+<ol>
+  <li><strong>必须写很长才能说清。</strong>→ 接口太复杂，或者一个方法干了太多事。</li>
+  <li><strong>必须描述内部结构才说得清。</strong>→ 模块太浅（13.5 那条判据）。</li>
+  <li><strong>必须写「先调 a 再调 b，否则会挂」。</strong>→ 缺一个更高层的抽象把顺序藏起来（第 5 章）。</li>
+  <li><strong>写不清某个变量的含义。</strong>→ 这个变量可能在表示两件不同的事，应该拆成两个。</li>
+</ol>
+
+<p>第 4 条正是第 14 章开头那个真实 bug 的形状——一个叫 <code>block</code> 的变量同时表示逻辑块号和物理块号。</p>
+
+<hr>
+
+<h2><span class="num">练习</span>这条注释有信息量吗</h2>
+
+<p>五个真实风格的注释。判断它们属于哪一类（复述代码 / 低层精度 / 高层直觉 / 该拆成两类）。</p>
+
+<div class="triage">
+  <p class="score"></p>
+
+  <div class="row">
+    <p><code>// 如果 retry_count 大于 MAX_RETRY，返回 -1。</code> 紧贴着一行 <code>if (retry_count &gt; MAX_RETRY) return -1;</code></p>
+    <div class="opts">
+      <button data-ok="1">复述代码，删</button>
+      <button>低层精度，留</button>
+      <button>高层直觉，留</button>
+    </div>
+    <p class="note">把注释旁边的代码读一遍就能写出这句——按 13.1 的判据，价值为零。真正缺的是：<code>MAX_RETRY</code> 为什么是这个值？超过之后调用方该重试还是放弃？那才是要写的。</p>
+  </div>
+
+  <div class="row">
+    <p><code>// 区间左闭右开：[begin, end)。end 可以等于 begin（空区间），但不能小于 begin。</code></p>
+    <div class="opts">
+      <button>复述代码，删</button>
+      <button data-ok="1">低层精度，留</button>
+      <button>高层直觉，留</button>
+    </div>
+    <p class="note">签名里 <code>size_t begin, size_t end</code> 完全说不出开闭和大小关系。这是最典型的「代码无法表达、必须靠注释」的信息，也是 C++ 迭代器约定被反复记错的地方。</p>
+  </div>
+
+  <div class="row">
+    <p><code>// 尝试把当前 key hash 追加到一个尚未发送的已有 RPC 上。</code> 紧贴一个 10 行的四条件 <code>if</code> 循环。</p>
+    <div class="opts">
+      <button>复述代码，删</button>
+      <button>低层精度，留</button>
+      <button data-ok="1">高层直觉，留</button>
+    </div>
+    <p class="note">它没写任何细节，但提供了理解整段代码的框架，读者能自己解释掉那四个条件中的三个（见 13.4）。10 行代码配一条注释，比例正好——一行一注释才是红旗。</p>
+  </div>
+
+  <div class="row">
+    <p>一个 <code>class SegmentWriter</code> 的接口注释里写：「内部维护一个 4KB 的写缓冲，满 4KB 时触发一次 <code>pwrite</code>；使用双缓冲以避免写入时阻塞读者。」</p>
+    <div class="opts">
+      <button>写得清楚，是好实现注释</button>
+      <button>信息不足，应补缓冲策略</button>
+      <button data-ok="1">放错位置：设计信号</button>
+    </div>
+    <p class="note">这是 13.5 那条判据的现场：<strong>接口注释必须描述实现，说明这个类浅。</strong>用户只需要知道「写入何时可见」「是否线程安全」「满了会怎样」。缓冲策略应当搬到实现文件里。更重要的动作是问：为什么接口说不清自己的能力？——通常是因为它只是把 syscall 包了一层。</p>
+  </div>
+
+  <div class="row">
+    <p>一个状态枚举上方写着：「<em>新增状态值时，必须同时更新：① STATUS_MAX_VALUE（并保证它最后一条）② Status.cc 里的 messages 与 symbols 表 ③ ClientException.h 新增异常类 ④ ClientException::throwException 新增 case。</em>」</p>
+    <div class="opts">
+      <button>复述代码，删</button>
+      <button data-ok="1">跨模块注释，必须留</button>
+      <button>低层精度，应挪到实现里</button>
+    </div>
+    <p class="note">这就是 13.7 的「蹭必经之地」：加状态值的人一定会打开这个枚举，所以把「还有四处要改」写在这里，是成本最低、命中率最高的位置。它直接把痛点①从「靠记忆」变成「照单办事」。</p>
+  </div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>把一条坏注释救活</h2>
+
+<div class="recall">
+<p>下面这条注释被评审打了回来。它有至少四个问题。找出它们，并写出你的版本。</p>
+<pre><code>// 获取缓冲区大小
+size_t getSize() const;</code></pre>
+<p class="hint-inline">提示：逐个问 13.3 那五个问题——单位？边界？空值？所有权？不变量？再问：这个名字是不是太泛？</p>
+<textarea placeholder="问题 1：… 问题 2：… 我的版本：…"></textarea>
+<button class="reveal">对照答案</button>
+<div class="answer">
+<p><strong>问题清单</strong>（按严重程度排）：</p>
+<ol>
+  <li><strong>重复命名</strong>：<code>get</code> + <code>Size</code> → 「获取大小」，唯一多出来的是「缓冲区」这个词，而它在类名里。</li>
+  <li><strong>「大小」不可判定</strong>：是已写入的字节数，还是已分配的容量？这两者在写入过程中会不同，调用方拿它算偏移或算拷贝长度时，选错就是读垃圾或越界。</li>
+  <li><strong>单位未定义</strong>：字节？元素？如果这个类将来支持 16 位字符，<code>size_t</code> 到底数什么？</li>
+  <li><strong>名字太泛</strong>：<code>getSize</code> 在类里可能有多个候选含义（第 14 章：<code>getCount</code> 的病）。</li>
+</ol>
+<p><strong>一个可行版本：</strong></p>
+<pre><code>// 已写入缓冲区的字节数（即有效数据的长度，不是容量）。
+// 恒有 size() &lt;= capacity()。写入后立即反映新长度；
+// 不包含任何为对齐而预留的尾部空间。
+size_t size() const;</code></pre>
+<p>如果它实际上返回的是容量，那名字就该是 <code>capacity()</code>，注释改成「当前可容纳的字节数，扩容前不再分配」。<strong>关键在于：这条注释写不写得出来，取决于你能不能确定这个函数到底代表什么。</strong>如果你发现自己含糊其辞，按 13.8 的第 4 条——很可能这个函数（或这个类）在混着表示两件事。</p>
+<h3>加分项：一个真正该被提出的评审意见</h3>
+<p>如果 <code>getSize()</code> 和另一个 <code>getLength()</code> 同时存在，且两者都返回「大小」，那问题不在注释，在接口：三个同义名会让每个调用方各选一个，然后代码里出现两种写法——这正是第 14 章「一致性」要治的病，也是变更放大的种子。</p>
+</div>
+</div>
+
+<hr>
+
+<h2><span class="num">练习</span>一句话评审</h2>
+
+<div class="key">
+<p><strong>能直接贴进 MR 的话：</strong>「这条接口注释描述了内部实现（缓冲策略 / 线程模型），一旦实现变了就会变成假信息。而调用方真正需要知道的三件事——<code>send</code> 是否拷贝帧、队列满时的返回值、是否线程安全——都没写。建议把实现那段搬到 <code>.cpp</code>，接口这里补这三条契约；如果这三条很难写清，可能说明这个类的接口还没有一个能独立说清的抽象。」</p>
+</div>
+
+<p>这句话的结构可以复用到任何注释评审上：<strong>指出哪一段会过时（因为它讲实现）→ 指出哪几条契约缺失（因为它们才是调用方要的）→ 把「写不出来」归因为设计信号而不是作者水平</strong>。第三步决定了作者会不会接受你的意见。</p>
+
+<div class="foot">
+  <h4>一手资源</h4>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch13.html">第 13 章 注释应该描述代码中不明显的内容（中文全译）</a> — 这是全书最长的一章，原文里的 IndexLookup 例子有完整的接口注释修改前/后对照，值得对着读一遍；本课只取了其中最有力的几块。</p>
+  <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch12.html">第 12 章</a> — 如果 13.1 那条判据你还没完全接受，回第 12 章看「注释是抽象的基础」那一节，它是本章的前提。</p>
+
+  <h4>随时问我</h4>
+  <p class="ask">贴一条你觉得「写了但没用」的注释，连同它旁边 10–20 行代码。我们按 13.1 的判据过一遍：能删的删掉，剩下的按「低层精度 / 高层直觉」分类补写。做完你会发现大多数坏注释不是写得差，是<strong>该写的没写</strong>。</p>
+
+  <div class="nav-links">
+    <span><a href="0012-why-write-comments.html">← L12 · 为什么要写注释</a></span>
+    <span><a href="0014-choosing-names.html">L14 · 选择的名字 →</a></span>
+  </div>
+</div>
+
+</main>
+<script src="../assets/course.js"></script>
+</body>
+</html>
