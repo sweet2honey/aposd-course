@@ -176,7 +176,12 @@ if (line.find('\n') != std::string::npos) {   // 插入的内容含换行
 
 <p>这句可以直接当评审判据用：<em>如果我把这个类的实现从头换一遍（换数据结构、换算法），它的接口需要改吗？</em>需要改，说明接口在抄实现，抽象没建立起来。</p>
 
-<h2><span class="num">7.5</span><a class="gl" href="../reference/glossary.html#pass-through-variable">传递变量</a><span class="en-inl">pass-through variable</span>：横穿整个调用栈的耦合</h2>
+<div class="key">
+<p>把这一节压成一句话：<strong>两者之间的差异，就是这个类提供的价值。</strong>差异为零，等于接口在抄实现，等于这层没消化任何麻烦——此时它剩下的唯一作用，是让每次改实现都顺带改一遍所有调用方。</p>
+<p>所以「接口抽象 vs 实现抽象」和 4.3 的<a class="gl" href="../reference/glossary.html#depth">深度</a><span class="en-inl">depth</span>不是同一把尺子：深度量的是<strong>多少</strong>（接口有多窄、功能有多少），抽象差异问的是<strong>是不是同一类概念</strong>。一个类可以很深却仍然让接口说着实现的语言，也可以很浅但接口换了一层说法。两个都对，才是真的好。</p>
+</div>
+
+<h2><span class="num">7.5</span><a class="gl" href="../reference/glossary.html#pass-through-variable">透传变量</a><span class="en-inl">pass-through variable</span>：横穿整个调用栈的耦合</h2>
 
 <p>这是本章对「改一个需求要动好几处」最直接的回答。</p>
 
@@ -191,7 +196,7 @@ int handle_loop(const char* cert)      { return dispatch(cert); }
 int dispatch(const char* cert)         { return worker(cert); }
 int worker(const char* cert)           { return open_socket(cert); }</code></pre>
 
-<p><code>cert</code> 就是<strong>传递变量</strong>（pass-through variable）：沿着一条长长的调用链往下传，中间那些方法一个都不用它，但签名里必须有它。</p>
+<p><code>cert</code> 就是<strong>透传变量</strong>（pass-through variable）：沿着一条长长的调用链往下传，中间那些方法一个都不用它，但签名里必须有它。</p>
 
 <p>代价很具体：</p>
 
@@ -220,7 +225,7 @@ int worker(const char* cert)           { return open_socket(cert); }</code></pre
     <tr>
       <td><strong><a class="gl" href="../reference/glossary.html#context-object">上下文对象</a><span class="en-inl">context object</span></strong></td>
       <td>所有全局状态放一个 <code>Context</code>，各对象持有它的引用</td>
-      <td>它自己可能变成传递变量；无纪律会变成「大杂烩」；要注意线程安全</td>
+      <td>它自己可能变成透传变量；无纪律会变成「大杂烩」；要注意线程安全</td>
     </tr>
     <tr>
       <td>重构调用链</td>
@@ -248,7 +253,7 @@ private:
 
 <div class="card">
 <h4>为什么「只在构造函数里出现」这么关键</h4>
-<p>因为这样 <code>Ctx</code> 就不会退化成新的传递变量。任何需要它的对象，创建时拿一次引用，之后按需取用；不需要它的对象，完全不知道它存在。新增一个字段（比如 <code>retry_budget</code>）时，除了 <code>Ctx</code> 的定义，<strong>现有代码一行都不用改</strong>，变更放大被压到 1。</p>
+<p>因为这样 <code>Ctx</code> 就不会退化成新的透传变量。任何需要它的对象，创建时拿一次引用，之后按需取用；不需要它的对象，完全不知道它存在。新增一个字段（比如 <code>retry_budget</code>）时，除了 <code>Ctx</code> 的定义，<strong>现有代码一行都不用改</strong>，变更放大被压到 1。</p>
 <p>书里也诚实说了：上下文里的变量带有全局变量的大部分缺点：「这个字段为什么存在、谁在用」不明显，无纪律会变成什么都能塞的垃圾袋。缓解手段是<strong>把字段尽量做成不可变</strong>，至少别在里面放可变状态。</p>
 </div>
 
@@ -316,7 +321,7 @@ private:
     <p><code>run_service(cert, timeout, metrics, logger, flags)</code>，五个参数一路传给 <code>worker(...)</code>，中间三层都不用。</p>
     <div class="opts">
       <button>接口与实现不同</button>
-      <button data-ok="1">传递变量</button>
+      <button data-ok="1">透传变量</button>
       <button>合法装饰器</button>
     </div>
     <p class="note">五个参数横穿三层，任何新增全局配置都要改五个签名。收进 <code>Ctx</code>，并让 <code>Ctx</code> 只在构造函数里出现。</p>
@@ -380,7 +385,7 @@ class Connection final : public ByteSource { /* … */ };</code></pre>
   <p><a href="https://cactus-proj.github.io/A-Philosophy-of-Software-Design-zh/ch07.html">第 7 章 不同的层，不同的抽象（中文全译）</a> — 图 7.1 把两种修法（暴露下层 / 合并）画得很清楚，值得对着图重读 7.2 节。</p>
 
   <h4>随时问我</h4>
-  <p class="ask">贴一个你觉得「拆了反而更乱」的模块给我——两个类互相调也行。我们先用抽象是否变化判断该拆该并，再看是不是传递变量在作怪。</p>
+  <p class="ask">贴一个你觉得「拆了反而更乱」的模块给我——两个类互相调也行。我们先用抽象是否变化判断该拆该并，再看是不是透传变量在作怪。</p>
 
   <div class="nav-links">
     <span><a href="0006-general-modules.html">← L6 · 通用模块更深入</a></span>

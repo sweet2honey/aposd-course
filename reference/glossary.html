@@ -141,10 +141,11 @@
     <p class="avoid">避免这样说：「这只是一个包装」——装饰器也是包装，但它增加了功能；透传的关键特征是<strong>没有</strong>增加功能。</p>
     <p class="see">→ L7</p>
   </dd>
-  <dt id="pass-through-variable">传递变量<span class="en">pass-through variable</span></dt>
+  <dt id="pass-through-variable">透传变量<span class="en">pass-through variable</span></dt>
   <dd>
     <p>沿着一条长调用链向下传的变量，只有最底层的方法用得上，中间每一层都被迫知道它的存在。它导致变更放大：新增一个全局信息就要改整条链上的所有签名。常见解法是上下文对象。</p>
-    <p class="avoid">避免这样说：「全局参数」——传递变量恰恰不是全局的，它是被人工往下递的。</p>
+    <p>译本作<strong>传递变量</strong>，这里统一成<strong>透传变量</strong>：英文都是 pass-through，与 7.1 的<strong>透传方法</strong>同源，一对词放在一起才看得出是同一类毛病。</p>
+    <p class="avoid">避免这样说：「全局参数」——透传变量恰恰不是全局的，它是被人工往下递的。</p>
     <p class="see">→ L7</p>
   </dd>
   <dt id="context-object">上下文对象<span class="en">context object</span></dt>
